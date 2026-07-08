@@ -8,6 +8,7 @@ nixPkgs = [
     "php81Extensions.mbstring",
     "php81Extensions.tokenizer",
     "php81Extensions.xml",
+    "php81Extensions.dom",
     "php81Extensions.ctype",
     "php81Extensions.json",
     "php81Extensions.bcmath",
