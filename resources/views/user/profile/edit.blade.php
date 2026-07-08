@@ -11,6 +11,22 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <!-- Main Form -->
         <div class="lg:col-span-2">
+            @if(session('success'))
+                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-6">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if($errors->any())
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
+                    <ul class="list-disc list-inside">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             <form method="POST" action="{{ route('user.profile.update') }}" class="space-y-6">
                 @csrf
                 @method('PUT')
@@ -24,7 +40,7 @@
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <!-- Name -->
-                        <div class="md:col-span-2">
+                        <div>
                             <label for="name" class="block text-sm font-medium text-gray-700 mb-2">
                                 Full Name
                             </label>
@@ -42,8 +58,26 @@
                             @enderror
                         </div>
 
+                        <!-- Username -->
+                        <div>
+                            <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+                                Username
+                            </label>
+                            <input 
+                                type="text" 
+                                id="username" 
+                                name="username" 
+                                value="{{ old('username', $user->username) }}" 
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
+                                placeholder="Choose a username"
+                            >
+                            @error('username')
+                                <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+
                         <!-- Email -->
-                        <div class="md:col-span-2">
+                        <div>
                             <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
                                 Email Address
                             </label>
@@ -120,24 +154,19 @@
                     </h2>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- Favorite Tea Type -->
+                        <!-- Favorite Tea -->
                         <div>
                             <label for="favorite_tea_type" class="block text-sm font-medium text-gray-700 mb-2">
-                                Favorite Tea Type
+                                Favorite Tea
                             </label>
-                            <select 
+                            <input 
+                                type="text" 
                                 id="favorite_tea_type" 
                                 name="favorite_tea_type" 
+                                value="{{ old('favorite_tea_type', $user->favorite_tea_type) }}" 
                                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
+                                placeholder="e.g., Jasmine Green Tea, Earl Grey"
                             >
-                                <option value="">Select your favorite</option>
-                                <option value="green" {{ old('favorite_tea_type', $user->favorite_tea_type) == 'green' ? 'selected' : '' }}>Green Tea</option>
-                                <option value="black" {{ old('favorite_tea_type', $user->favorite_tea_type) == 'black' ? 'selected' : '' }}>Black Tea</option>
-                                <option value="white" {{ old('favorite_tea_type', $user->favorite_tea_type) == 'white' ? 'selected' : '' }}>White Tea</option>
-                                <option value="oolong" {{ old('favorite_tea_type', $user->favorite_tea_type) == 'oolong' ? 'selected' : '' }}>Oolong Tea</option>
-                                <option value="herbal" {{ old('favorite_tea_type', $user->favorite_tea_type) == 'herbal' ? 'selected' : '' }}>Herbal Tea</option>
-                                <option value="puerh" {{ old('favorite_tea_type', $user->favorite_tea_type) == 'puerh' ? 'selected' : '' }}>Pu-erh Tea</option>
-                            </select>
                             @error('favorite_tea_type')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
@@ -154,7 +183,7 @@
                                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
                             >
                                 <option value="">Select preference</option>
-                                <option value="low" {{ old('caffeine_preference', $user->caffeine_preference) == 'low' ? 'selected' : '' }}>Low Caffeine</option>
+                                <option value="low" {{ old('caffeine_preference', $user->caffeine_preference) == 'low' ? 'selected' : '' }}>Low / No Caffeine</option>
                                 <option value="medium" {{ old('caffeine_preference', $user->caffeine_preference) == 'medium' ? 'selected' : '' }}>Medium Caffeine</option>
                                 <option value="high" {{ old('caffeine_preference', $user->caffeine_preference) == 'high' ? 'selected' : '' }}>High Caffeine</option>
                             </select>

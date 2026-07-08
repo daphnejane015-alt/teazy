@@ -152,84 +152,82 @@ class TeaController extends Controller
         return redirect()->route($redirectRoute)->with('success', 'Tea updated successfully!');
     }
 
-    // 3. Trigger scraper from dashboard
+    // 3. Trigger scraper from dashboard (fires background process — returns immediately)
     public function scrape(Request $request)
     {
         $forceRefresh = $request->has('force');
-        $delay = $request->get('delay', 2); // Default 2s instead of 3s
-        
-        // Set cache TTL based on scrape type:
-        // - Regular scrape (daily): 24 hours
-        // - Force refresh (weekly): 168 hours (7 days)
-        $cacheTtlHours = $forceRefresh ? 168 : 24;
-        $cacheTtlSeconds = $cacheTtlHours * 3600;
-        
-        // Extend PHP execution time for scraping (5 minutes)
-        set_time_limit(300);
-        
-        // Force refresh should use shorter delay
-        if ($forceRefresh && $delay > 2) {
-            $delay = 2;
+
+        // Mark scrape as running so the UI can show a spinner
+        \Illuminate\Support\Facades\Cache::put('scrape_running', true, now()->addMinutes(15));
+        \Illuminate\Support\Facades\Cache::forget('scrape_done');
+        // Store the scrape type so the status panel knows what mode was used
+        \Illuminate\Support\Facades\Cache::put('scrape_type', $forceRefresh ? 'force' : 'normal', now()->addMinutes(30));
+
+        // Build artisan command string
+        $artisan  = PHP_BINARY . ' ' . base_path('artisan');
+        $cmd      = $artisan . ' scrape:tea-data --source=all';
+        if ($forceRefresh) {
+            $cmd .= ' --fresh';
         }
-        
-        try {
-            // Run the robust scraper
-            $exitCode = Artisan::call('scrape:robust-tea', [
-                '--force' => $forceRefresh,
-                '--delay' => $delay
-            ]);
-            
-            // Get the output
-            $output = Artisan::output();
-            
-            // Parse the output for results
-            $created = $this->parseScrapeOutput($output, 'Created');
-            $updated = $this->parseScrapeOutput($output, 'Updated');
-            $requests = $this->parseScrapeOutput($output, 'Total requests');
-            
-            // Update cache with proper TTL and metadata
-            $cacheKey = 'tea_scraping_results';
-            $cacheData = [
-                'timestamp' => now()->toDateTimeString(),
-                'cache_ttl_hours' => $cacheTtlHours,
-                'scrape_type' => $forceRefresh ? 'weekly' : 'daily',
-                'data' => [
-                    'created' => $created,
-                    'updated' => $updated,
-                    'skipped' => $this->parseScrapeOutput($output, 'Skipped'),
-                    'request_count' => $requests,
-                    'total_teas' => \App\Models\Tea::where('source', 'scraped')->count()
-                ]
-            ];
-            \Illuminate\Support\Facades\Cache::put($cacheKey, $cacheData, $cacheTtlSeconds);
-            
-            // Build success message
-            $message = "Tea data scraped successfully!";
-            
-            if ($requests === 0) {
-                $message .= " (Using cached data)";
-            }
-            
-            $message .= " | Cache valid for {$cacheTtlHours} hours (" . ($forceRefresh ? 'weekly' : 'daily') . " mode)";
-            
-            // Log the scraping activity
-            Log::info('Admin tea scraping completed', [
-                'created' => $created,
-                'updated' => $updated,
-                'requests' => $requests,
-                'force' => $forceRefresh,
-                'delay' => $delay,
-                'cache_ttl_hours' => $cacheTtlHours
-            ]);
-            
-            return redirect()->route('admin.teas.scraped')
-                ->with('success', $message);
-                
-        } catch (\Exception $e) {
-            Log::error('Admin tea scraping failed', ['error' => $e->getMessage()]);
-            return redirect()->route('admin.teas.scraped')
-                ->with('error', 'Scraping failed: ' . $e->getMessage());
+
+        // Append a callback that writes a 'done' cache entry when finished
+        // We piggyback on a small wrapper: write result to a temp file the
+        // status endpoint can read, then set cache flags.
+        $doneFlag = storage_path('logs/scrape_done.flag');
+
+        if (PHP_OS_FAMILY === 'Windows') {
+            // Windows: use START /B to detach the process
+            $cmd = 'START /B cmd /C "' . $cmd . ' > NUL 2>&1 && echo done > ' . addslashes($doneFlag) . '"';
+            pclose(popen($cmd, 'r'));
+        } else {
+            $cmd = $cmd . ' > /dev/null 2>&1 && touch ' . escapeshellarg($doneFlag) . ' &';
+            exec($cmd);
         }
+
+        Log::info('Admin triggered background tea scrape', ['force' => $forceRefresh]);
+
+        return redirect()->route('admin.teas.scraped')
+            ->with('info', '🕷️ Scraping started in the background. The page will refresh automatically when done.');
+    }
+
+    // 3b. Poll endpoint — returns JSON status for the scrape progress indicator
+    public function scrapeStatus()
+    {
+        $running  = \Illuminate\Support\Facades\Cache::get('scrape_running', false);
+        $doneFlag = storage_path('logs/scrape_done.flag');
+        $done     = file_exists($doneFlag);
+
+        if ($done) {
+            // Clear flags
+            \Illuminate\Support\Facades\Cache::forget('scrape_running');
+            \Illuminate\Support\Facades\Cache::put('scrape_done', true, now()->addMinutes(5));
+            @unlink($doneFlag);
+
+            $total        = Tea::where('source', 'scraped')->count();
+            $scrapeType   = \Illuminate\Support\Facades\Cache::get('scrape_type', 'normal');
+            $ttlHours     = ($scrapeType === 'force') ? 168 : 24;
+
+            // Write the results cache so the status panel on the page updates
+            \Illuminate\Support\Facades\Cache::put('tea_scraping_results', [
+                'timestamp'      => now()->toDateTimeString(),
+                'scrape_type'    => $scrapeType,
+                'cache_ttl_hours'=> $ttlHours,
+                'data'           => [
+                    'total_teas' => $total,
+                    'created'    => 0,
+                    'updated'    => 0,
+                    'skipped'    => 0,
+                ],
+            ], now()->addHours($ttlHours));
+
+            return response()->json(['status' => 'done', 'total' => $total]);
+        }
+
+        if ($running) {
+            return response()->json(['status' => 'running']);
+        }
+
+        return response()->json(['status' => 'idle']);
     }
     
     /**

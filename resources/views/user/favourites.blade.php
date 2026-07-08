@@ -27,7 +27,8 @@
                 <div class="relative h-56 overflow-hidden">
                     <img src="{{ $imgSrc }}" 
                          class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                         alt="{{ $tea->name }}">
+                         alt="{{ $tea->name }}"
+                         onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                     
                     <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     
@@ -137,7 +138,8 @@
 <div id="teaDetailsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
     <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div class="relative">
-            <img id="modalTeaImage" src="" alt="Tea" class="w-full h-64 object-cover rounded-t-2xl">
+            <img id="modalTeaImage" src="" alt="Tea" class="w-full h-64 object-cover rounded-t-2xl"
+                 onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1564890369478-c89ca6d9cde9?w=600&h=400&fit=crop';">
             <button onclick="closeTeaDetails()" class="absolute top-4 right-4 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>

@@ -260,13 +260,24 @@
             <div class="relative h-56 overflow-hidden">
                 <img src="{{ $imgSrc }}" 
                      class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                     alt="{{ $item['tea']->name }}">
+                     alt="{{ $item['tea']->name }}"
+                     onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                 
                 <!-- Overlay with score badge -->
                 <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 
+                <!-- Favourite Button -->
+                <button type="button" 
+                        onclick="toggleFavourite({{ $item['tea']->id }}, this)" 
+                        data-tea-id="{{ $item['tea']->id }}"
+                        class="favourite-btn absolute top-4 right-4 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform z-10">
+                    <svg class="w-5 h-5 favourite-icon text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    </svg>
+                </button>
+                
                 <!-- Score Badge -->
-                <div class="absolute top-4 right-4">
+                <div class="absolute top-4 right-16">
                     <span class="score-badge text-sm px-3 py-1">
                         {{ round($item['contextual_score']) }}/100
                     </span>
@@ -282,19 +293,11 @@
 
             <!-- Content Section -->
             <div class="p-6">
-                <!-- Tea Name & Action Buttons -->
-                <div class="mb-3 flex items-start justify-between">
+                <!-- Tea Name -->
+                <div class="mb-3">
                     <h3 class="text-xl font-bold group-hover:text-green-700 transition-colors" style="color: var(--text-dark);">
                         {{ $item['tea']->name }}
                     </h3>
-                    <button type="button" 
-                            class="favourite-btn ml-2 p-2 rounded-full hover:bg-red-50 transition-colors" 
-                            data-tea-id="{{ $item['tea']->id }}"
-                            onclick="toggleFavourite({{ $item['tea']->id }}, this)">
-                        <svg class="w-6 h-6 text-gray-400 favourite-icon" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
-                        </svg>
-                    </button>
                 </div>
 
                 <!-- Preference Matching Indicators -->
@@ -389,6 +392,11 @@
                             </div>
                         </div>
                     </div>
+                    <div class="mt-3 text-center">
+                        <span class="text-xs font-semibold" style="color: var(--accent-green);">
+                            Overall Match: {{ round($item['contextual_score']) }}/100
+                        </span>
+                    </div>
                 </div>
 
                 <!-- Rating Section -->
@@ -453,7 +461,7 @@
                         <button type="button" 
                                 class="btn-secondary text-sm py-2 px-3 text-center"
                                 onclick="openTeaDetails({{ $item['tea']->id }}, '{{ addslashes($item['tea']->name) }}', '{{ addslashes($item['tea']->flavor) }}', '{{ addslashes($item['tea']->caffeine_level) }}', '{{ addslashes($item['tea']->health_benefit) }}', '{{ $imgSrc }}')">
-                            👁️ View Details
+                            👁️ Details
                         </button>
 
                         <!-- Shop Button -->
@@ -485,28 +493,25 @@
 </div>
 
 <!-- Tea Details Modal -->
-<div id="teaDetailsModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="fixed inset-0 bg-gray-900 bg-opacity-50 transition-opacity" onclick="closeTeaDetails()"></div>
-    <div class="fixed inset-0 z-10 overflow-y-auto">
-        <div class="flex min-h-full items-center justify-center p-4">
-            <div class="relative transform overflow-hidden rounded-2xl bg-white shadow-2xl transition-all max-w-2xl w-full">
+<div id="teaDetailsModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-50 p-4" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="relative transform overflow-hidden rounded-2xl bg-white shadow-2xl transition-all max-w-lg w-full max-h-[90vh] overflow-y-auto">
                 <!-- Modal Header -->
-                <div class="relative h-64">
+                <div class="relative h-72">
                     <img id="modalTeaImage" src="" alt="" class="w-full h-full object-cover">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
-                    <button onclick="closeTeaDetails()" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 hover:bg-white flex items-center justify-center shadow-lg transition-all">
+                    <button onclick="closeTeaDetails()" class="absolute top-4 right-4 w-12 h-12 rounded-full bg-white hover:bg-gray-100 flex items-center justify-center shadow-lg transition-all z-20">
                         <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                         </svg>
                     </button>
                     <div class="absolute bottom-4 left-6 right-6">
-                        <h2 id="modalTeaName" class="text-3xl font-bold text-white mb-2"></h2>
+                        <h2 id="modalTeaName" class="text-2xl font-bold text-white mb-2"></h2>
                         <span id="modalTeaFlavor" class="inline-block px-3 py-1 rounded-full text-sm font-medium bg-white/20 text-white backdrop-blur-sm"></span>
                     </div>
                 </div>
 
                 <!-- Modal Body -->
-                <div class="p-6 space-y-6">
+                <div class="p-6 space-y-5">
                     <!-- Quick Info Row -->
                     <div class="grid grid-cols-2 gap-4">
                         <div class="p-4 rounded-xl bg-green-50 border border-green-100">
@@ -538,8 +543,6 @@
 
                 </div>
             </div>
-        </div>
-    </div>
 </div>
 
 <script>
@@ -588,15 +591,34 @@ function openTeaDetails(id, name, flavor, caffeine, healthBenefit, image) {
     document.getElementById('modalTeaCaffeine').textContent = caffeine;
     document.getElementById('modalTeaHealth').textContent = healthBenefit || 'No health benefit information available.';
 
-    document.getElementById('teaDetailsModal').classList.remove('hidden');
+    const modal = document.getElementById('teaDetailsModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
     document.body.style.overflow = 'hidden';
 }
 
 // Close tea details modal
 function closeTeaDetails() {
-    document.getElementById('teaDetailsModal').classList.add('hidden');
+    const modal = document.getElementById('teaDetailsModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
     document.body.style.overflow = 'auto';
 }
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('teaDetailsModal');
+    if (event.target === modal) {
+        closeTeaDetails();
+    }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeTeaDetails();
+    }
+});
 
 // Load favourites sidebar
 async function loadFavourites() {

@@ -1,31 +1,66 @@
 @extends('layouts.admin-sidebar')
 
 @section('content')
+
+{{-- Flash messages --}}
+@if(session('info'))
+<div class="mb-4 flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 rounded-lg text-sm font-medium">
+    <svg class="animate-spin h-4 w-4 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+    </svg>
+    {{ session('info') }}
+</div>
+@endif
+@if(session('success'))
+<div class="mb-4 bg-green-50 border border-green-300 text-green-800 px-4 py-3 rounded-lg text-sm font-medium">
+    ✅ {{ session('success') }}
+</div>
+@endif
+@if(session('error'))
+<div class="mb-4 bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded-lg text-sm font-medium">
+    ❌ {{ session('error') }}
+</div>
+@endif
+
 <div class="mb-6">
     <div class="flex justify-between items-start mb-4">
         <div>
             <h1 class="text-3xl font-bold mb-2">Scraped Teas</h1>
             <p class="text-gray-600">Manage and edit scraped tea data</p>
         </div>
-        <div class="flex gap-4">
-            <!-- Scrape with Cache -->
-            <form action="{{ route('admin.scrape.teas') }}" method="POST" class="inline">
-                @csrf
-                <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700" title="Use cached data if available">
-                    🕷️ Scrap Tea Data
-                </button>
-            </form>
-            
-            <!-- Force Scrape (Refresh) -->
-            <form action="{{ route('admin.scrape.teas') }}" method="POST" class="inline">
-                @csrf
-                <input type="hidden" name="force" value="1">
-                <button type="submit" class="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700" title="Force fresh scraping (slower, bypasses cache)">
-                    🔄 Force Scrape
-                </button>
-            </form>
-            
-            <a href="{{ route('admin.teas.create', ['source' => 'manual']) }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 inline-block">
+        <div class="flex gap-3 items-center flex-wrap">
+
+            {{-- Scrape status banner (shown while running) --}}
+            <div id="scrape-status-banner" class="hidden items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg text-sm font-medium">
+                <svg class="animate-spin h-4 w-4 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                Scraping in progress… page will refresh when done.
+            </div>
+
+            {{-- Scrape buttons (hidden while running) --}}
+            <div id="scrape-buttons" class="flex gap-3">
+                <!-- Scrape (merge) -->
+                <form action="{{ route('admin.scrape.teas') }}" method="POST" class="inline" onsubmit="startScrapeUI(); return true;">
+                    @csrf
+                    <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-medium" title="Scrape and merge with existing data">
+                        🕷️ Scrape Tea Data
+                    </button>
+                </form>
+
+                <!-- Force Scrape (fresh) -->
+                <form action="{{ route('admin.scrape.teas') }}" method="POST" class="inline" onsubmit="startScrapeUI(); return true;">
+                    @csrf
+                    <input type="hidden" name="force" value="1">
+                    <button type="submit" class="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 text-sm font-medium" title="Force fresh scrape (bypasses merge, fetches new data)">
+                        🔄 Force Scrape
+                    </button>
+                </form>
+            </div>
+
+            <a href="{{ route('admin.teas.create', ['source' => 'manual']) }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium inline-block">
                 ➕ Add New Tea
             </a>
         </div>
@@ -118,39 +153,40 @@
     </div>
 </div>
 
-<!-- Cache Status Panel -->
+<!-- Scraping Status Panel -->
 @php
-$cacheKey = 'tea_scraping_results';
-$hasCache = \Illuminate\Support\Facades\Cache::has($cacheKey);
-$cachedData = $hasCache ? \Illuminate\Support\Facades\Cache::get($cacheKey) : null;
-$actualTotalTeas = \App\Models\Tea::where('source', 'scraped')->count();
-$deletedTeasCount = \App\Models\DeletedTea::count();
+    $cacheKey     = 'tea_scraping_results';
+    $hasCache     = \Illuminate\Support\Facades\Cache::has($cacheKey);
+    $cachedData   = $hasCache ? \Illuminate\Support\Facades\Cache::get($cacheKey) : null;
+    $totalTeas    = \App\Models\Tea::where('source', 'scraped')->count();
+    $deletedCount = \App\Models\DeletedTea::count();
 
-// Calculate cache expiration time based on cache_ttl_hours stored in cache
-$cacheExpiresAt = null;
-$cacheDurationHours = 24; // default
-if ($hasCache && $cachedData && isset($cachedData['timestamp'])) {
-    $cacheDurationHours = $cachedData['cache_ttl_hours'] ?? 24;
-    $cacheExpiresAt = \Carbon\Carbon::parse($cachedData['timestamp'])->addHours($cacheDurationHours);
-}
+    // Determine mode: 'force' = weekly (168h), 'normal' = daily (24h)
+    $scrapeType      = $cachedData['scrape_type'] ?? null;
+    $isForce         = ($scrapeType === 'force');
+    $cacheTtlHours   = $isForce ? 168 : 24;
+    $modeLabel       = $isForce ? 'weekly' : 'daily';
+    $modeColor       = $isForce ? 'text-purple-600' : 'text-green-600';
+    $lastUpdated     = $cachedData['timestamp'] ?? null;
+    $validUntil      = $lastUpdated
+                         ? \Carbon\Carbon::parse($lastUpdated)->addHours($cacheTtlHours)
+                         : null;
+    $created         = $cachedData['data']['created'] ?? 0;
+    $updated         = $cachedData['data']['updated'] ?? 0;
 @endphp
 
 <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between flex-wrap gap-3">
         <div class="flex items-center gap-3">
             <span class="text-2xl">📊</span>
             <div>
                 <h3 class="font-semibold text-blue-900">Scraping Status</h3>
-                @if($hasCache && $cachedData && $cacheExpiresAt)
-                    @php
-                        $scrapeType = $cachedData['scrape_type'] ?? 'daily';
-                        $typeColor = $scrapeType === 'weekly' ? 'text-purple-600' : 'text-green-600';
-                    @endphp
+                @if($lastUpdated && $validUntil)
                     <p class="text-sm text-blue-700">
-                        Last updated: <span class="font-medium">{{ $cachedData['timestamp'] }}</span>
-                        <span class="text-gray-500 mx-1">|</span>
-                        Valid until: <span class="font-medium">{{ $cacheExpiresAt->format('Y-m-d H:i:s') }}</span>
-                        <span class="text-xs {{ $typeColor }} ml-1 font-medium">[{{ $scrapeType }} mode - {{ $cacheDurationHours }}h]</span>
+                        Last updated: <span class="font-medium">{{ $lastUpdated }}</span>
+                        <span class="text-gray-400 mx-1">|</span>
+                        Valid until: <span class="font-medium">{{ $validUntil->format('Y-m-d H:i:s') }}</span>
+                        <span class="text-xs {{ $modeColor }} ml-1 font-medium">[{{ $modeLabel }} mode - {{ $cacheTtlHours }}h]</span>
                     </p>
                 @else
                     <p class="text-sm text-blue-700">No scraping data available. Run scraping to fetch tea data.</p>
@@ -158,17 +194,27 @@ if ($hasCache && $cachedData && isset($cachedData['timestamp'])) {
             </div>
         </div>
         <div class="text-right">
-            <div class="text-sm font-medium text-blue-800">
-                {{ $actualTotalTeas }} teas in database
-            </div>
+            <div class="text-sm font-medium text-blue-800">{{ $totalTeas }} teas in database</div>
             @if($hasCache && $cachedData)
                 <div class="text-xs text-blue-600">
-                    {{ $cachedData['data']['created'] ?? 0 }} created, {{ $cachedData['data']['updated'] ?? 0 }} updated
-                    @if($deletedTeasCount > 0)
-                        <span class="text-orange-600 ml-1">({{ $deletedTeasCount }} excluded)</span>
+                    {{ $created }} created, {{ $updated }} updated
+                    @if($deletedCount > 0)
+                        <span class="text-orange-600 ml-1">({{ $deletedCount }} excluded)</span>
                     @endif
                 </div>
             @endif
+        </div>
+    </div>
+
+    {{-- Button legend --}}
+    <div class="mt-3 pt-3 border-t border-blue-200 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-blue-700">
+        <div class="flex items-start gap-2">
+            <span class="mt-0.5 inline-block bg-green-600 text-white px-1.5 py-0.5 rounded font-bold">🕷️</span>
+            <div><span class="font-semibold">Scrape Tea Data</span> — merges new data with existing teas (daily mode, cache valid 24h). Safe to run anytime.</div>
+        </div>
+        <div class="flex items-start gap-2">
+            <span class="mt-0.5 inline-block bg-orange-600 text-white px-1.5 py-0.5 rounded font-bold">🔄</span>
+            <div><span class="font-semibold">Force Scrape</span> — re-fetches everything fresh from source sites (weekly mode, cache valid 168h). Use when data feels stale.</div>
         </div>
     </div>
 </div>
@@ -215,7 +261,8 @@ if ($hasCache && $cachedData && isset($cachedData['timestamp'])) {
                     <tr class="hover:bg-gray-50 transition-colors">
                         <!-- Image -->
                         <td class="px-4 py-3 whitespace-nowrap">
-                            <img src="{{ $imgSrc }}" alt="{{ $tea->name }}" class="h-12 w-12 rounded-md object-cover">
+                            <img src="{{ $imgSrc }}" alt="{{ $tea->name }}" class="h-12 w-12 rounded-md object-cover"
+                                 onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                         </td>
                         
                         <!-- Name & Source Link -->
@@ -319,5 +366,44 @@ if ($hasCache && $cachedData && isset($cachedData['timestamp'])) {
         </div>
     @endif
 </div>
+
+<script>
+const STATUS_URL = '{{ route('admin.scrape.status') }}';
+let pollTimer = null;
+
+function startScrapeUI() {
+    const buttons = document.getElementById('scrape-buttons');
+    const banner  = document.getElementById('scrape-status-banner');
+    if (buttons) buttons.classList.add('hidden');
+    if (banner)  { banner.classList.remove('hidden'); banner.classList.add('flex'); }
+    startPolling();
+}
+
+function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(async () => {
+        try {
+            const res  = await fetch(STATUS_URL);
+            const data = await res.json();
+            if (data.status === 'done') {
+                clearInterval(pollTimer);
+                window.location.reload();
+            }
+        } catch (e) { /* keep polling on network errors */ }
+    }, 5000); // poll every 5 s — kinder to ngrok
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    @if(session('info'))
+    startScrapeUI(); // scrape just triggered
+    @else
+    try {
+        const res  = await fetch(STATUS_URL);
+        const data = await res.json();
+        if (data.status === 'running') startScrapeUI();
+    } catch (e) {}
+    @endif
+});
+</script>
 
 @endsection

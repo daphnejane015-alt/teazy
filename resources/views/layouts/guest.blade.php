@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ config('app.name', 'Tea App') }} - {{ __('Authentication') }}</title>
+        <title>Teazy - {{ __('Authentication') }}</title>
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -24,7 +24,7 @@
             }
             
             body {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
                 min-height: 100vh;
                 font-family: 'Figtree', sans-serif;
             }
@@ -113,8 +113,8 @@
                 <div class="tea-logo mx-auto mb-4">
                     🍵
                 </div>
-                <h1 class="text-3xl font-bold text-black mb-2">Teazy</h1>
-                <p class="text-black/80">Discover your perfect tea match</p>
+                <h1 class="text-3xl font-bold text-green-800 mb-2">Teazy</h1>
+                <p class="text-green-700">Discover your perfect tea match</p>
             </div>
 
             <!-- Auth Card -->
@@ -124,7 +124,7 @@
             
             <!-- Footer -->
             <div class="mt-8 text-center">
-                <p class="text-white/60 text-sm">
+                <p class="text-green-800/60 text-sm">
                     © 2024 Tea Recommendation. All rights reserved.
                 </p>
             </div>

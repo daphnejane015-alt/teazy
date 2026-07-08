@@ -89,7 +89,8 @@
                                     
                                     <img src="{{ $imgSrc }}" 
                                          class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" 
-                                         alt="{{ $tea->name }}">
+                                         alt="{{ $tea->name }}"
+                                         onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                                 </div>
                                  
                                 <div class="flex-1 min-w-0">
@@ -175,7 +176,8 @@
                     
                     <img src="{{ $imgSrc }}" 
                          class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                         alt="{{ $tea->name }}">
+                         alt="{{ $tea->name }}"
+                         onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                     
                     <!-- Rating Badge -->
                     <div class="absolute top-4 right-4">
@@ -453,18 +455,28 @@
                         </h3>
                         <p id="modalTeaHealth" class="text-green-700 leading-relaxed"></p>
                     </div>
-                    <div class="flex gap-3 pt-2">
-                        <a id="modalShopLink" href="#" target="_blank" rel="noopener noreferrer"
-                           class="flex-1 btn-primary py-3 px-4 text-center flex items-center justify-center gap-2 rounded-xl">
-                            Shop Now
-                        </a>
-                        <a id="modalSourceLink" href="#" target="_blank" rel="noopener noreferrer"
-                           class="flex-1 btn-secondary py-3 px-4 text-center flex items-center justify-center gap-2 rounded-xl">
+                    <!-- Rating Section -->
+                    <div class="p-5 rounded-xl bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-100">
+                        <h3 class="text-lg font-bold text-amber-800 mb-3 flex items-center gap-2">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
                             </svg>
-                            Source
-                        </a>
+                            Rate This Tea
+                        </h3>
+                        <div class="flex items-center gap-2 mb-3">
+                            <div id="starRating" class="flex gap-1">
+                                <button type="button" class="star-btn text-3xl text-gray-300 hover:text-amber-400 transition-colors" data-rating="1">★</button>
+                                <button type="button" class="star-btn text-3xl text-gray-300 hover:text-amber-400 transition-colors" data-rating="2">★</button>
+                                <button type="button" class="star-btn text-3xl text-gray-300 hover:text-amber-400 transition-colors" data-rating="3">★</button>
+                                <button type="button" class="star-btn text-3xl text-gray-300 hover:text-amber-400 transition-colors" data-rating="4">★</button>
+                                <button type="button" class="star-btn text-3xl text-gray-300 hover:text-amber-400 transition-colors" data-rating="5">★</button>
+                            </div>
+                            <span id="ratingText" class="text-sm text-amber-700 font-medium"></span>
+                        </div>
+                        <button type="button" id="submitRatingBtn" onclick="submitRating()" class="w-full btn-primary py-2 px-4 text-sm font-medium rounded-lg">
+                            Submit Rating
+                        </button>
+                        <p id="ratingMessage" class="text-sm mt-2 text-center hidden"></p>
                     </div>
                 </div>
             </div>
@@ -506,7 +518,11 @@ async function toggleFavourite(teaId, btn) {
     }
 }
 
+let currentTeaId = null;
+let selectedRating = 0;
+
 function openTeaDetails(id, name, flavor, caffeine, healthBenefit, image, shopLink, sourceUrl) {
+    currentTeaId = id;
     document.getElementById('modalTeaImage').src = image;
     document.getElementById('modalTeaName').textContent = name;
     document.getElementById('modalTeaFlavor').textContent = flavor;
@@ -514,21 +530,9 @@ function openTeaDetails(id, name, flavor, caffeine, healthBenefit, image, shopLi
     document.getElementById('modalTeaCaffeine').textContent = caffeine;
     document.getElementById('modalTeaHealth').textContent = healthBenefit || 'No health benefit information available.';
 
-    const shopBtn = document.getElementById('modalShopLink');
-    if (shopLink) {
-        shopBtn.href = shopLink;
-        shopBtn.style.display = 'flex';
-    } else {
-        shopBtn.style.display = 'none';
-    }
-
-    const sourceBtn = document.getElementById('modalSourceLink');
-    if (sourceUrl) {
-        sourceBtn.href = sourceUrl;
-        sourceBtn.style.display = 'flex';
-    } else {
-        sourceBtn.style.display = 'none';
-    }
+    // Reset rating UI
+    resetRatingUI();
+    loadUserRating(id);
 
     document.getElementById('teaDetailsModal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
@@ -537,7 +541,102 @@ function openTeaDetails(id, name, flavor, caffeine, healthBenefit, image, shopLi
 function closeTeaDetails() {
     document.getElementById('teaDetailsModal').classList.add('hidden');
     document.body.style.overflow = 'auto';
+    currentTeaId = null;
+    selectedRating = 0;
 }
+
+function resetRatingUI() {
+    selectedRating = 0;
+    document.querySelectorAll('.star-btn').forEach(btn => {
+        btn.classList.remove('text-amber-400');
+        btn.classList.add('text-gray-300');
+    });
+    document.getElementById('ratingText').textContent = '';
+    document.getElementById('ratingMessage').classList.add('hidden');
+    document.getElementById('submitRatingBtn').disabled = false;
+    document.getElementById('submitRatingBtn').textContent = 'Submit Rating';
+}
+
+function loadUserRating(teaId) {
+    fetch(`/ratings/check/${teaId}`, {
+        headers: { 'Accept': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.rating) {
+            selectedRating = data.rating;
+            updateStarDisplay(data.rating);
+            document.getElementById('ratingText').textContent = `Your rating: ${data.rating}/5`;
+            document.getElementById('submitRatingBtn').textContent = 'Update Rating';
+        }
+    })
+    .catch(e => console.error('Error loading rating:', e));
+}
+
+function updateStarDisplay(rating) {
+    document.querySelectorAll('.star-btn').forEach(btn => {
+        const btnRating = parseInt(btn.dataset.rating);
+        if (btnRating <= rating) {
+            btn.classList.remove('text-gray-300');
+            btn.classList.add('text-amber-400');
+        } else {
+            btn.classList.remove('text-amber-400');
+            btn.classList.add('text-gray-300');
+        }
+    });
+}
+
+async function submitRating() {
+    if (!currentTeaId || selectedRating === 0) {
+        return;
+    }
+
+    const submitBtn = document.getElementById('submitRatingBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+
+    try {
+        const res = await fetch('/ratings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                tea_id: currentTeaId,
+                rating: selectedRating
+            })
+        });
+
+        if (res.ok) {
+            showMessage('Rating submitted successfully!', 'success');
+            document.getElementById('submitRatingBtn').textContent = 'Update Rating';
+        }
+    } catch (e) {
+        console.error('Error submitting rating:', e);
+    } finally {
+        submitBtn.disabled = false;
+    }
+}
+
+function showMessage(message, type) {
+    const msgEl = document.getElementById('ratingMessage');
+    msgEl.textContent = message;
+    msgEl.classList.remove('hidden', 'text-green-600', 'text-red-600');
+    msgEl.classList.add('text-green-600');
+    setTimeout(() => msgEl.classList.add('hidden'), 3000);
+}
+
+// Star click handlers
+document.querySelectorAll('.star-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        selectedRating = parseInt(this.dataset.rating);
+        updateStarDisplay(selectedRating);
+        const ratingTexts = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+        document.getElementById('ratingText').textContent = ratingTexts[selectedRating];
+    });
+});
 
 async function checkFavourites() {
     document.querySelectorAll('.favourite-btn').forEach(async btn => {

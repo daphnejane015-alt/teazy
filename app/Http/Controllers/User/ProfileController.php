@@ -48,6 +48,7 @@ class ProfileController extends Controller
 
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'username' => ['nullable', 'string', 'max:255', 'unique:users,username,' . $user->id],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email,' . $user->id],
             'phone' => ['nullable', 'string', 'max:20'],
             'bio' => ['nullable', 'string', 'max:500'],
@@ -57,12 +58,16 @@ class ProfileController extends Controller
 
         $user->update([
             'name' => $request->name,
+            'username' => $request->username,
             'email' => $request->email,
             'phone' => $request->phone,
             'bio' => $request->bio,
             'favorite_tea_type' => $request->favorite_tea_type,
             'caffeine_preference' => $request->caffeine_preference,
         ]);
+
+        // Refresh user from database to get updated data
+        $user->refresh();
 
         return redirect()->route('user.profile.show')
             ->with('success', 'Profile updated successfully!');

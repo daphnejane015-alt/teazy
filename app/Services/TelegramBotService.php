@@ -680,6 +680,12 @@ class TelegramBotService
             $text .= "\n\nHealth Benefits:\n{$tea->health_benefit}";
         }
 
+        $text .= "\n\n📊 Match Score Breakdown:";
+        $text .= "\nFlavor: " . round($recommendation['flavor_score'] * 100) . "%";
+        $text .= "\nCaffeine: " . round($recommendation['caffeine_score'] * 100) . "%";
+        $text .= "\nHealth: " . round($recommendation['health_score'] * 100) . "%";
+        $text .= "\n\nOverall Match: " . round($recommendation['contextual_score'] ?? $recommendation['score']) . "/100";
+
         $text .= "\n\nWhy Recommended:";
         $text .= "\nMatches your {$flavorLabel} preference";
         $text .= "\n{$caffeineLabel} caffeine level";
@@ -689,8 +695,6 @@ class TelegramBotService
         if (!empty($context['weather']) && !empty($context['city'])) {
             $text .= "\nSuited to current weather in {$context['city']}";
         }
-
-        $text .= "\n\nScore: " . ($recommendation['contextual_score'] ?? $recommendation['score']);
 
         return $text;
     }

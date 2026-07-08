@@ -86,10 +86,10 @@ class ScrapeTeaData extends Command
     /**
      * Delay configuration (in seconds)
      */
-    protected $minDelay = 2;      // Minimum delay between requests
-    protected $maxDelay = 5;      // Maximum delay between requests
-    protected $sourceDelay = 3;   // Delay between different sources
-    protected $teaDelay = 1;      // Delay between processing individual teas
+    protected $minDelay = 1;      // Minimum delay between requests
+    protected $maxDelay = 2;      // Maximum delay between requests
+    protected $sourceDelay = 1;   // Delay between different sources
+    protected $teaDelay = 0;      // Delay between processing individual teas
 
     /**
      * Execute the console command.
@@ -166,6 +166,9 @@ class ScrapeTeaData extends Command
             return self::FAILURE;
         }
 
+        // Post-scrape: merge & remove true duplicate tea names
+        $this->deduplicateTeas();
+
         $this->newLine();
         $this->info('Tea scraping completed.');
         $this->line('Created: ' . $this->created);
@@ -175,6 +178,67 @@ class ScrapeTeaData extends Command
         return self::SUCCESS;
     }
     
+    /**
+     * After scraping, find and merge any duplicate tea records.
+     * Duplicates arise when the same tea is returned by multiple sources
+     * with slightly different names that normalise to the same value.
+     * Strategy: group by LOWER(name), keep the oldest record (lowest id)
+     * as the canonical row, merge the richest field values from all dupes,
+     * then delete the surplus rows.
+     */
+    protected function deduplicateTeas(): void
+    {
+        $this->line('  🔍 Deduplicating teas...');
+        $merged = 0;
+
+        // Find names that appear more than once (case-insensitive)
+        $duplicateGroups = Tea::selectRaw('LOWER(name) as norm_name, COUNT(*) as cnt')
+            ->groupByRaw('LOWER(name)')
+            ->havingRaw('COUNT(*) > 1')
+            ->pluck('cnt', 'norm_name');
+
+        foreach ($duplicateGroups as $normName => $count) {
+            $teas = Tea::whereRaw('LOWER(name) = ?', [$normName])
+                ->orderBy('id')
+                ->get();
+
+            if ($teas->count() < 2) continue;
+
+            // Canonical = first (oldest) record
+            $canonical = $teas->first();
+
+            foreach ($teas->skip(1) as $dupe) {
+                // Merge richer data into canonical
+                if ($this->scoreBenefitQuality($dupe->health_benefit ?? '') > $this->scoreBenefitQuality($canonical->health_benefit ?? '')) {
+                    $canonical->health_benefit = $dupe->health_benefit;
+                }
+                if ($this->scoreFlavorSpecificity($dupe->flavor ?? '') > $this->scoreFlavorSpecificity($canonical->flavor ?? '')) {
+                    $canonical->flavor = $dupe->flavor;
+                }
+                if (empty($canonical->shop_link) && !empty($dupe->shop_link)) {
+                    $canonical->shop_link = $dupe->shop_link;
+                }
+                if (empty($canonical->source_url) && !empty($dupe->source_url)) {
+                    $canonical->source_url = $dupe->source_url;
+                }
+                if (empty($canonical->caffeine_level) || $canonical->caffeine_level === 'N/A') {
+                    if (!empty($dupe->caffeine_level) && $dupe->caffeine_level !== 'N/A') {
+                        $canonical->caffeine_level = $dupe->caffeine_level;
+                    }
+                }
+                $dupe->delete();
+                $merged++;
+            }
+            $canonical->save();
+        }
+
+        if ($merged > 0) {
+            $this->line("  ✅ Merged and removed {$merged} duplicate tea record(s).");
+        } else {
+            $this->line('  ✅ No duplicates found.');
+        }
+    }
+
     /**
      * Create a robust HTTP client with proper headers and retry logic
      */
@@ -568,8 +632,19 @@ class ScrapeTeaData extends Command
             }
         }
         
-        // Return random default benefit
-        return $this->defaultBenefits[array_rand($this->defaultBenefits)];
+        // Derive a benefit from the individual words in the tea name
+        $words = preg_split('/\s+/', strtolower(preg_replace('/\s+tea\s*$/i', '', $teaName)));
+        foreach ($words as $word) {
+            if (strlen($word) < 4) continue;
+            foreach ($teaBenefits as $keyword => $benefit) {
+                if (strpos($word, $keyword) !== false || strpos($keyword, $word) !== false) {
+                    return $benefit;
+                }
+            }
+        }
+        // Last resort: build a generic but non-random sentence from the name
+        $displayName = ucwords(trim(preg_replace('/\s+tea\s*$/i', '', $teaName)));
+        return "Supports overall wellness and provides the natural benefits of {$displayName}";
     }
 
     /**
@@ -1540,7 +1615,7 @@ class ScrapeTeaData extends Command
         if ($similarWithSource) {
             return $similarWithSource->source_url;
         }
-        
+
         return null;
     }
 

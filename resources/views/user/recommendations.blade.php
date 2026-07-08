@@ -152,7 +152,8 @@
                 <div class="relative h-56 overflow-hidden">
                     <img src="{{ $imgSrc }}" 
                          class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                         alt="{{ $recommendation['tea']->name }}">
+                         alt="{{ $recommendation['tea']->name }}"
+                         onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                     
                     <!-- Overlay with score badge -->
                     <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -161,7 +162,7 @@
                     <button type="button" 
                             onclick="toggleFavourite({{ $recommendation['tea']->id }}, this)" 
                             data-tea-id="{{ $recommendation['tea']->id }}"
-                            class="favourite-btn absolute top-4 right-4 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform z-10">
+                            class="favourite-btn absolute top-4 right-4 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform z-20 border-2 border-gray-200">
                         <svg class="w-5 h-5 favourite-icon text-gray-400" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
                         </svg>
@@ -236,6 +237,11 @@
                                     {{ round($recommendation['health_score'] * 100) }}%
                                 </div>
                             </div>
+                        </div>
+                        <div class="mt-3 text-center">
+                            <span class="text-xs font-semibold" style="color: var(--accent-green);">
+                                Overall Match: {{ round($recommendation['contextual_score'] ?? $recommendation['score']) }}/100
+                            </span>
                         </div>
                     </div>
                     
@@ -326,36 +332,44 @@
 <div id="teaModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
     <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div class="relative">
-            <img id="modalTeaImage" src="" alt="Tea" class="w-full h-64 object-cover rounded-t-2xl">
-            <button onclick="closeTeaModal()" class="absolute top-4 right-4 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <img id="modalTeaImage" src="" alt="Tea" class="w-full h-72 object-cover rounded-t-2xl">
+            <button onclick="closeTeaModal()" class="absolute top-4 right-4 w-12 h-12 rounded-full bg-white hover:bg-gray-100 flex items-center justify-center shadow-lg transition-all z-20">
+                <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
             </button>
+            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-6">
+                <h3 id="modalTeaName" class="text-2xl font-bold text-white mb-2"></h3>
+                <span id="modalTeaFlavor" class="inline-block px-3 py-1 rounded-full text-sm font-medium bg-white/20 text-white backdrop-blur-sm"></span>
+            </div>
         </div>
         <div class="p-6">
-            <h3 id="modalTeaName" class="text-2xl font-bold mb-4" style="color: var(--text-dark);"></h3>
-            
-            <div class="space-y-3 mb-4">
-                <div class="flex items-center justify-between py-2 border-b" style="border-color: var(--border-color);">
-                    <span class="text-sm font-medium flex items-center" style="color: var(--text-medium);">
-                        <span class="mr-2">🍃</span> Flavor
-                    </span>
-                    <span id="modalTeaFlavor" class="text-sm font-semibold" style="color: var(--accent-green);"></span>
+            <div class="grid grid-cols-2 gap-4 mb-5">
+                <div class="p-4 rounded-xl bg-green-50 border border-green-100">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-2xl">⚡</span>
+                        <span class="text-sm font-medium text-green-700">Caffeine Level</span>
+                    </div>
+                    <p id="modalTeaCaffeine" class="text-lg font-bold text-green-800"></p>
                 </div>
-                <div class="flex items-center justify-between py-2 border-b" style="border-color: var(--border-color);">
-                    <span class="text-sm font-medium flex items-center" style="color: var(--text-medium);">
-                        <span class="mr-2">⚡</span> Caffeine
-                    </span>
-                    <span id="modalTeaCaffeine" class="text-sm font-semibold" style="color: var(--accent-green);"></span>
+                <div class="p-4 rounded-xl bg-amber-50 border border-amber-100">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-2xl">🍃</span>
+                        <span class="text-sm font-medium text-amber-700">Flavor</span>
+                    </div>
+                    <p id="modalTeaFlavor2" class="text-lg font-bold text-amber-800"></p>
                 </div>
             </div>
             
-            <div class="mb-4">
-                <p class="text-sm font-medium mb-2" style="color: var(--text-medium);">🌿 Health Benefits</p>
-                <p id="modalTeaBenefit" class="text-sm leading-relaxed" style="color: var(--text-light);"></p>
+            <div class="p-5 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100">
+                <h3 class="text-lg font-bold text-green-800 mb-3 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                    Health Benefits
+                </h3>
+                <p id="modalTeaBenefit" class="text-green-700 leading-relaxed"></p>
             </div>
-            
         </div>
     </div>
 </div>
@@ -408,14 +422,19 @@ async function toggleFavourite(teaId, btn) {
 }
 
 function openTeaDetails(id, name, flavor, caffeine, healthBenefit, image, shopLink, sourceUrl) {
+    console.log('Opening tea details modal', { id, name, flavor, caffeine, healthBenefit, image });
     document.getElementById('modalTeaImage').src = image;
     document.getElementById('modalTeaName').textContent = name;
     document.getElementById('modalTeaFlavor').textContent = flavor;
+    document.getElementById('modalTeaFlavor2').textContent = flavor;
     document.getElementById('modalTeaCaffeine').textContent = caffeine;
     document.getElementById('modalTeaBenefit').textContent = healthBenefit;
-    
-    document.getElementById('teaModal').classList.remove('hidden');
-    document.getElementById('teaModal').classList.add('flex');
+
+    const modal = document.getElementById('teaModal');
+    console.log('Modal element:', modal);
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    console.log('Modal classes after toggle:', modal.className);
 }
 
 function closeTeaModal() {

@@ -31,7 +31,8 @@
                     
                     <img src="{{ $imgSrc }}" 
                          class="w-20 h-20 object-cover rounded-lg" 
-                         alt="{{ $rating->tea->name }}">
+                         alt="{{ $rating->tea->name }}"
+                         onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                     
                     <div class="flex-1">
                         <h3 class="text-lg font-bold" style="color: var(--text-dark);">

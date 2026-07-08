@@ -71,6 +71,9 @@ Route::middleware(['admin'])->group(function () {
     Route::post('/admin/scrape-teas', [TeaController::class, 'scrape'])
         ->name('admin.scrape.teas');
 
+    Route::get('/admin/scrape-status', [TeaController::class, 'scrapeStatus'])
+        ->name('admin.scrape.status');
+
     Route::delete('/admin/teas/{id}', [TeaController::class, 'destroy'])
         ->name('admin.teas.destroy');
 
@@ -183,6 +186,9 @@ Route::middleware(['auth'])->group(function () {
     // Rating routes
     Route::post('/ratings', [RatingController::class, 'store'])
         ->name('ratings.store');
+
+    Route::get('/ratings/check/{teaId}', [RatingController::class, 'check'])
+        ->name('ratings.check');
 
     Route::get('/top-rated', [RatingController::class, 'topRated'])
         ->name('top.rated');

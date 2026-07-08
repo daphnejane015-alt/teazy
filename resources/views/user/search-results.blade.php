@@ -34,7 +34,8 @@
                 <div class="relative h-48 overflow-hidden">
                     <img src="{{ $imgSrc }}" 
                          class="w-full h-full object-cover transition-transform duration-300 hover:scale-110" 
-                         alt="{{ $tea->name }}">
+                         alt="{{ $tea->name }}"
+                         onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                     
                     <div class="absolute top-3 right-3">
                         <span class="flavor-tag">

@@ -2,6 +2,12 @@
 
 @section('content')
 <div class="max-w-6xl mx-auto px-4 py-8">
+    @if(session('success'))
+        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-6">
+            {{ session('success') }}
+        </div>
+    @endif
+
     <!-- Header Section -->
     <div class="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-8 mb-8 text-white">
         <div class="flex flex-col md:flex-row items-center md:items-start gap-6">
@@ -17,7 +23,14 @@
             
             <!-- Profile Info -->
             <div class="flex-1 text-center md:text-left">
-                <h1 class="text-3xl font-bold mb-2">{{ $user->name }}</h1>
+                <div class="flex flex-col md:flex-row md:items-center gap-2 mb-2">
+                    <h1 class="text-3xl font-bold">{{ $user->name }}</h1>
+                    @if(!empty($user->username))
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white/20 backdrop-blur-sm border border-white/30">
+                            {{ $user->username }}
+                        </span>
+                    @endif
+                </div>
                 <p class="text-white/90 mb-4">{{ $user->email }}</p>
             </div>
             
@@ -44,6 +57,18 @@
                     <div>
                         <label class="text-sm text-gray-500">Full Name</label>
                         <p class="text-gray-900 font-medium">{{ $user->name }}</p>
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-500">Username</label>
+                        <p class="text-gray-900 font-medium">
+                            @if ($user->username)
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-sm font-medium bg-green-100 text-green-800">
+                                    {{ $user->username }}
+                                </span>
+                            @else
+                                <span class="text-gray-400 italic">Not set</span>
+                            @endif
+                        </p>
                     </div>
                     <div>
                         <label class="text-sm text-gray-500">Email Address</label>

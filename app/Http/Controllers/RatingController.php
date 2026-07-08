@@ -33,6 +33,18 @@ class RatingController extends Controller
             ->with('success', $rating->wasRecentlyCreated ? 'Rating submitted successfully!' : 'Rating updated successfully!');
     }
 
+    public function check($teaId)
+    {
+        $rating = Rating::where('user_id', Auth::id())
+            ->where('tea_id', $teaId)
+            ->first();
+
+        return response()->json([
+            'is_rated' => $rating !== null,
+            'rating' => $rating ? $rating->rating : null
+        ]);
+    }
+
     /**
      * Get top rated teas - shared method used by both RatingController and TopTeaController
      * 

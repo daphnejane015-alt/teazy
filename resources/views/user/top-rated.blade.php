@@ -30,7 +30,8 @@
                     : $fallbackImage;
             @endphp
             
-            <img src="{{ $imgSrc }}" class="w-full h-48 object-cover">
+            <img src="{{ $imgSrc }}" class="w-full h-48 object-cover"
+                 onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
             
             <div class="p-4">
                 <div class="flex justify-between items-start mb-2">

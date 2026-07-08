@@ -40,7 +40,8 @@
                 
                 <img src="{{ $imgSrc }}" 
                      class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                     alt="{{ $teaName }}">
+                     alt="{{ $teaName }}"
+                     onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
                 
                 <!-- Rating Badge -->
                 <div class="absolute top-4 right-4">
@@ -232,7 +233,8 @@
         <div class="flex min-h-full items-center justify-center p-4">
             <div class="relative transform overflow-hidden rounded-2xl bg-white shadow-2xl transition-all max-w-2xl w-full">
                 <div class="relative h-64">
-                    <img id="modalTeaImage" src="" alt="" class="w-full h-full object-cover">
+                    <img id="modalTeaImage" src="" alt="" class="w-full h-full object-cover"
+                         onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1564890369478-c89ca6d9cde9?w=600&h=400&fit=crop';">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
                     <button onclick="closeTeaDetails()" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 hover:bg-white flex items-center justify-center shadow-lg">
                         <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">

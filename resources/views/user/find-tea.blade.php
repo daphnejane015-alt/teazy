@@ -26,7 +26,7 @@
             <div>
                 <label class="block font-semibold mb-2">Caffeine Level</label>
                 <select name="caffeine" class="w-full border rounded-lg p-3" style="border-color: var(--border-color);" required>
-                    <option value="low">Low</option>
+                    <option value="low">Low / No Caffeine</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="caffeine_free">Caffeine Free</option>

@@ -25,7 +25,8 @@
                         : (str_starts_with($tea->image, '/storage/') ? $tea->image : '/storage/'.$tea->image)))
                     : $fallbackImage;
             @endphp
-            <img src="{{ $imgSrc }}" alt="{{ $tea->name }}" class="w-full h-48 object-cover">
+            <img src="{{ $imgSrc }}" alt="{{ $tea->name }}" class="w-full h-48 object-cover"
+                 onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
             <div class="p-4">
                 <div class="flex items-start justify-between gap-3">
                     <h2 class="text-lg font-semibold text-gray-900 leading-tight">{{ $tea->name }}</h2>
