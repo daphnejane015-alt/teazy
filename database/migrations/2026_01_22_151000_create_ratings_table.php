@@ -10,7 +10,8 @@ return new class extends Migration
     {
         Schema::create('ratings', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->unsignedInteger('user_id');
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->foreignId('tea_id')->constrained()->onDelete('cascade');
             $table->integer('rating')->unsigned(); // 1-5 stars
             $table->text('comment')->nullable();

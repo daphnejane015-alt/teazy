@@ -11,13 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('ratings', function (Blueprint $table) {
-            $table->increments ('id');
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('tea_id')->constrained()->onDelete('cascade');
-            $table->integer('rating'); // 1–5
-            $table->timestamps();
-        });
+        // Superseded by 2026_01_22_151000_create_ratings_table
     }
 
     /**
@@ -25,6 +19,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('ratings');
+        // No-op
     }
 };

@@ -11,10 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('recommendation_interactions', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
-        });
+        // Superseded by 2024_01_26_000001_create_recommendation_interactions_table
     }
 
     /**
@@ -22,6 +19,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('recommendation_interactions');
+        // No-op
     }
 };

@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('recommendation_interactions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->unsignedInteger('user_id');
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->foreignId('tea_id')->constrained()->onDelete('cascade');
             
             // Context information

@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('preferences', function (Blueprint $table) {
             $table->increments ('id');
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->unsignedInteger('user_id');
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->string('preferred_flavor');
             $table->string('preferred_caffeine');
             $table->string('health_goal');
