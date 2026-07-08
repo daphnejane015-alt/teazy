@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedInteger('user_id');
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
-            $table->foreignId('tea_id')->constrained()->onDelete('cascade');
+            $table->foreignId('tea_id');
             
             // Context information
             $table->string('weather_category')->nullable(); // hot, cold, rainy, etc.
