@@ -19,6 +19,18 @@ Route::get('/about-us', function () {
     return view('about-us');
 })->name('about.us');
 
+// Health check endpoint for Railway (must be public)
+Route::get('/health', [App\Http\Controllers\HealthController::class, 'index']);
+
+/*
+|--------------------------------------------------------------------------
+| FIRST ADMIN SETUP
+|--------------------------------------------------------------------------
+*/
+Route::get('/admin/setup', [App\Http\Controllers\Auth\AdminSetupController::class, 'create'])
+    ->name('admin.setup');
+Route::post('/admin/setup', [App\Http\Controllers\Auth\AdminSetupController::class, 'store'])
+    ->name('admin.setup.store');
 
 /*
 |--------------------------------------------------------------------------
@@ -127,6 +139,12 @@ Route::middleware(['admin'])->group(function () {
     
     Route::get('/admin/ratings/tea/{teaId}', [App\Http\Controllers\Admin\RatingManagementController::class, 'byTea'])
         ->name('admin.ratings.byTea');
+
+    // Admin API Usage routes
+    Route::get('/admin/api-usage', [App\Http\Controllers\Admin\ApiUsageController::class, 'index'])
+        ->name('admin.api-usage');
+    Route::post('/admin/api-usage/clear-cache', [App\Http\Controllers\Admin\ApiUsageController::class, 'clearCache'])
+        ->name('admin.api-usage.clear-cache');
 });
 
 /*
@@ -207,16 +225,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // AI-generated tea uses/recipes (Gemini) — generated on demand
     Route::get('/teas/{tea}/uses', [App\Http\Controllers\TeaAiController::class, 'uses'])
         ->name('teas.uses');
-
-    // Health check endpoint for Railway
-Route::get('/health', [App\Http\Controllers\HealthController::class, 'index']);
-
-// Admin API Usage routes
-    Route::get('/admin/api-usage', [App\Http\Controllers\Admin\ApiUsageController::class, 'index'])
-        ->name('admin.api-usage');
-    
-    Route::post('/admin/api-usage/clear-cache', [App\Http\Controllers\Admin\ApiUsageController::class, 'clearCache'])
-        ->name('admin.api-usage.clear-cache');
 });
 
 require __DIR__.'/auth.php';

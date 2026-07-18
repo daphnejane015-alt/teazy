@@ -18,13 +18,13 @@ class ApiUsageController extends Controller
 
     public function clearCache(Request $request)
     {
-        if ($request->user()->isAdmin()) {
-            $weatherService = app(WeatherService::class);
-            $weatherService->clearApiUsageCache();
-            
-            return redirect()->back()->with('success', 'API usage cache cleared successfully.');
+        if (! admin_user()) {
+            return redirect()->back()->with('error', 'Unauthorized action.');
         }
-        
-        return redirect()->back()->with('error', 'Unauthorized action.');
+
+        $weatherService = app(WeatherService::class);
+        $weatherService->clearApiUsageCache();
+
+        return redirect()->back()->with('success', 'API usage cache cleared successfully.');
     }
 }

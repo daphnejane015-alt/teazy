@@ -84,6 +84,14 @@
                     Sign in as user
                 </a>
             </p>
+            @if (\App\Models\User::where('role', 'admin')->doesntExist())
+                <p class="text-gray-600 mt-2">
+                    No admin account yet?
+                    <a href="{{ route('admin.setup') }}" class="text-green-600 hover:text-green-500 font-semibold transition duration-200">
+                        Create the first admin
+                    </a>
+                </p>
+            @endif
         </div>
     </form>
 </x-guest-layout>
