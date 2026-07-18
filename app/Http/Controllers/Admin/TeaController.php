@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Tea;
+use App\Services\GeminiService;
 use Artisan;
 use Illuminate\Support\Facades\Log;
 
@@ -29,13 +30,13 @@ class TeaController extends Controller
             $query->where('flavor', $flavorFilter);
         }
         
-        // Apply sorting
+        // Apply sorting (case-insensitive for name columns)
         switch ($sortOrder) {
             case 'name_asc':
-                $query->orderBy('name', 'asc');
+                $query->orderByRaw('LOWER(name) ASC');
                 break;
             case 'name_desc':
-                $query->orderBy('name', 'desc');
+                $query->orderByRaw('LOWER(name) DESC');
                 break;
             case 'newest':
                 $query->latest();
@@ -44,7 +45,7 @@ class TeaController extends Controller
                 $query->oldest();
                 break;
             default:
-                $query->orderBy('name', 'asc');
+                $query->orderByRaw('LOWER(name) ASC');
         }
         
         $teas = $query->get();
@@ -86,9 +87,11 @@ class TeaController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'flavor' => ['nullable', 'string', 'max:255'],
             'caffeine_level' => ['nullable', 'string', 'max:255'],
-            'health_benefit' => ['nullable', 'string', 'max:255'],
+            'health_benefit' => ['nullable', 'string', 'max:1000'],
             'source_url' => ['nullable', 'url', 'max:500'],
             'shop_link' => ['nullable', 'url', 'max:500'],
+            'shopee_link' => ['nullable', 'url', 'max:500'],
+            'lazada_link' => ['nullable', 'url', 'max:500'],
             'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
@@ -101,6 +104,8 @@ class TeaController extends Controller
             'health_benefit' => $request->health_benefit,
             'source_url' => $request->source_url,
             'shop_link' => $request->shop_link,
+            'shopee_link' => $request->shopee_link,
+            'lazada_link' => $request->lazada_link,
             'image' => $path,
             'source' => 'manual'
         ]);
@@ -123,9 +128,11 @@ class TeaController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'flavor' => ['nullable', 'string', 'max:255'],
             'caffeine_level' => ['nullable', 'string', 'max:255'],
-            'health_benefit' => ['nullable', 'string', 'max:255'],
+            'health_benefit' => ['nullable', 'string', 'max:1000'],
             'source_url' => ['nullable', 'url', 'max:500'],
             'shop_link' => ['nullable', 'url', 'max:500'],
+            'shopee_link' => ['nullable', 'url', 'max:500'],
+            'lazada_link' => ['nullable', 'url', 'max:500'],
             'image' => ['nullable', 'image'],
         ]);
 
@@ -135,6 +142,8 @@ class TeaController extends Controller
         $tea->health_benefit = $request->health_benefit;
         $tea->source_url = $request->source_url;
         $tea->shop_link = $request->shop_link;
+        $tea->shopee_link = $request->shopee_link;
+        $tea->lazada_link = $request->lazada_link;
 
         if ($request->hasFile('image')) {
             $tea->image = $request->file('image')->store('teas', 'public');
@@ -150,6 +159,60 @@ class TeaController extends Controller
         };
 
         return redirect()->route($redirectRoute)->with('success', 'Tea updated successfully!');
+    }
+
+    /**
+     * Generate Gemini AI descriptions for scraped teas that don't have one yet.
+     * Processed in a limited batch per request to stay within execution limits.
+     */
+    public function generateAiDescriptions(Request $request, GeminiService $gemini)
+    {
+        if (!$gemini->isConfigured()) {
+            return redirect()->route('admin.teas.scraped')
+                ->with('error', 'Gemini API key is not configured. Add GEMINI_API_KEY to your .env file.');
+        }
+
+        $batchSize = (int) $request->get('batch', 10);
+        $batchSize = max(1, min($batchSize, 25));
+
+        $teas = Tea::where('source', 'scraped')
+            ->where(function ($q) {
+                $q->whereNull('ai_description')->orWhere('ai_description', '');
+            })
+            ->limit($batchSize)
+            ->get();
+
+        if ($teas->isEmpty()) {
+            return redirect()->route('admin.teas.scraped')
+                ->with('success', 'All scraped teas already have an AI description.');
+        }
+
+        $generated = 0;
+        $failed = 0;
+
+        foreach ($teas as $tea) {
+            if ($gemini->descriptionFor($tea, true)) {
+                $generated++;
+            } else {
+                $failed++;
+            }
+        }
+
+        $remaining = Tea::where('source', 'scraped')
+            ->where(function ($q) {
+                $q->whereNull('ai_description')->orWhere('ai_description', '');
+            })
+            ->count();
+
+        $message = "🤖 Generated {$generated} AI description(s).";
+        if ($failed > 0) {
+            $message .= " {$failed} failed.";
+        }
+        if ($remaining > 0) {
+            $message .= " {$remaining} still pending — click again to continue.";
+        }
+
+        return redirect()->route('admin.teas.scraped')->with('success', $message);
     }
 
     // 3. Trigger scraper from dashboard (fires background process — returns immediately)

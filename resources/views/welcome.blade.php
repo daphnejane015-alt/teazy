@@ -284,6 +284,7 @@
             }
         }
     </style>
+    @include('layouts.partials.pwa')
 </head>
 <body>
     <!-- Navigation -->
@@ -295,9 +296,8 @@
             </a>
             
             <div class="nav-links">
-                @auth
-                    <a href="{{ route('user.dashboard') }}" class="btn btn-secondary">Dashboard</a>
-                @endauth
+                <a href="{{ url('/') }}" class="btn btn-secondary">Home</a>
+                <a href="{{ route('about.us') }}" class="btn btn-secondary">About Us</a>
             </div>
         </div>
     </nav>
@@ -414,6 +414,10 @@
 
     <!-- Footer -->
     <footer class="footer">
+        <p>
+            <a href="{{ url('/') }}">Home</a>
+            <a href="{{ route('about.us') }}">About Us</a>
+        </p>
         <p>🍃 Teazy - Discover Your Perfect Tea Match</p>
         <p style="margin-top: 0.5rem; font-size: 0.75rem;">
             Laravel v{{ Illuminate\Foundation\Application::VERSION }} | PHP v{{ PHP_VERSION }}

@@ -69,8 +69,8 @@
                     @foreach($ratings as $rating)
                         <tr class="hover:bg-gray-50">
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-medium text-gray-900">{{ $rating->tea->name }}</div>
-                                <div class="text-xs text-gray-500">{{ $rating->tea->flavor }} • {{ $rating->tea->caffeine_level }}</div>
+                                <div class="text-sm font-medium text-gray-900">{{ optional($rating->tea)->name ?? 'Deleted tea' }}</div>
+                                <div class="text-xs text-gray-500">{{ optional($rating->tea)->flavor ?? 'Unknown' }} • {{ optional($rating->tea)->caffeine_level ?? 'N/A' }}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-lg font-bold text-blue-600">

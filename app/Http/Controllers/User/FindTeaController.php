@@ -24,6 +24,8 @@ class FindTeaController extends Controller
                 'preferred_caffeine' => $request->caffeine,
                 'health_goal' => $request->health_goal,
                 'city' => $request->city,
+                'state' => $request->state,
+                'country' => $request->state ? 'MY' : null,
                 'weather_based_recommendations' => $request->has('weather_based_recommendations'),
                 'weather_preference' => $request->weather_preference ?? 'auto',
             ]
@@ -43,8 +45,10 @@ class FindTeaController extends Controller
                 session(['malaysian_weather_recommendations' => $malaysianRecommendations]);
             }
             
-            $weatherService->getCurrentWeather($request->city);
-            $weatherService->getWeeklyForecast($request->city);
+            // Always use 'MY' country code for Malaysian cities (from state selection)
+            $country = $request->state ? 'MY' : null;
+            $weatherService->getCurrentWeather($request->city, $country);
+            $weatherService->getWeeklyForecast($request->city, $country);
         }
 
         $recommendations = $recommendationService
@@ -64,15 +68,39 @@ class FindTeaController extends Controller
             return redirect()->route('user.dashboard');
         }
 
+        // Strip "tea"/"teas" from the search query for name matching
+        // e.g. "green tea" → focus on "green", "chamomile teas" → focus on "chamomile"
+        $cleanedQuery = trim(preg_replace('/\b(teas?)\b/i', '', $query));
+        
+        // If the query is ONLY "tea"/"teas" with nothing meaningful left, show all teas
+        if (empty($cleanedQuery) || strlen($cleanedQuery) < 2) {
+            $teas = Tea::orderByRaw('LOWER(name) ASC')
+                ->get()
+                ->map(function($tea) {
+                    $tea->average_rating = $tea->averageRating();
+                    $tea->total_ratings = $tea->totalRatings();
+                    $tea->user_rating = $tea->userRating(auth()->id());
+                    return $tea;
+                });
+            return view('user.search-results', compact('teas', 'query'));
+        }
+
         // Enhanced search with keyword mapping
         $searchTerms = $this->expandSearchTerms($query);
         
-        $teas = Tea::where(function($q) use ($searchTerms) {
-                // Search original query
-                $q->where('name', 'LIKE', "%{$searchTerms['original']}%")
-                  ->orWhere('flavor', 'LIKE', "%{$searchTerms['original']}%")
-                  ->orWhere('caffeine_level', 'LIKE', "%{$searchTerms['original']}%")
-                  ->orWhere('health_benefit', 'LIKE', "%{$searchTerms['original']}%");
+        $teas = Tea::where(function($q) use ($searchTerms, $cleanedQuery) {
+                // Primary: search cleaned query (without "tea") against name
+                $q->where('name', 'LIKE', "%{$cleanedQuery}%");
+                
+                // Also search full original query against name for exact compound matches
+                if ($cleanedQuery !== $searchTerms['original']) {
+                    $q->orWhere('name', 'LIKE', "%{$searchTerms['original']}%");
+                }
+                
+                // Search cleaned query against other fields
+                $q->orWhere('flavor', 'LIKE', "%{$cleanedQuery}%")
+                  ->orWhere('caffeine_level', 'LIKE', "%{$cleanedQuery}%")
+                  ->orWhere('health_benefit', 'LIKE', "%{$cleanedQuery}%");
                 
                 // Search expanded terms
                 foreach ($searchTerms['expanded'] as $term) {
@@ -82,9 +110,9 @@ class FindTeaController extends Controller
                       ->orWhere('health_benefit', 'LIKE', "%{$term}%");
                 }
                 
-                // Search individual words (for compound terms like "strawberry tea")
+                // Search individual meaningful words (tea/teas already filtered out)
                 foreach ($searchTerms['words'] as $word) {
-                    if (strlen($word) > 2) { // Skip very short words
+                    if (strlen($word) > 2) {
                         $q->orWhere('name', 'LIKE', "%{$word}%")
                           ->orWhere('flavor', 'LIKE', "%{$word}%")
                           ->orWhere('caffeine_level', 'LIKE', "%{$word}%")
@@ -93,13 +121,17 @@ class FindTeaController extends Controller
                 }
             })
             ->get()
-            ->map(function($tea) {
+            ->map(function($tea) use ($cleanedQuery) {
                 // Add average rating to each tea
                 $tea->average_rating = $tea->averageRating();
                 $tea->total_ratings = $tea->totalRatings();
                 $tea->user_rating = $tea->userRating(auth()->id());
+                // Add relevance score: prioritize name matches
+                $tea->relevance = stripos($tea->name, $cleanedQuery) !== false ? 1 : 0;
                 return $tea;
-            });
+            })
+            ->sortByDesc('relevance')
+            ->values();
 
         return view('user.search-results', compact('teas', 'query'));
     }
@@ -233,7 +265,7 @@ class FindTeaController extends Controller
     private function extractWords($query)
     {
         // Remove common stop words and split into words
-        $stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'];
+        $stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'tea', 'teas'];
         
         // Split query into words and filter out stop words
         $words = preg_split('/\s+/', $query);

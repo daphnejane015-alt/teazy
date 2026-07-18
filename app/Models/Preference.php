@@ -15,6 +15,7 @@ class Preference extends Model
         'preferred_caffeine',
         'health_goal',
         'city',
+        'state',
         'country',
         'latitude',
         'longitude',

@@ -40,7 +40,7 @@
                     </h3>
                     <div class="text-right">
                         <div class="text-base font-bold" style="color: var(--accent-green);">
-                            {{ number_format($tea->averageRating, 1) }}
+                            {{ number_format($tea->averageRating(), 1) }}
                         </div>
                         <div class="text-xs" style="color: var(--text-light);">
                             ({{ $tea->ratings_count }} reviews)
@@ -74,6 +74,7 @@
                         </div>
                     </div>
                 @endif
+            </div>
         </div>
     @empty
         <div class="col-span-full">

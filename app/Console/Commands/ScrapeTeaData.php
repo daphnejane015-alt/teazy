@@ -103,7 +103,7 @@ class ScrapeTeaData extends Command
 
         // --fresh: Clear HTTP caches and merge with existing data (RECOMMENDED)
         if ($fresh) {
-            $this->info('🔄 Fresh scrape mode: Merging with existing data...');
+            $this->info(' Fresh scrape mode: Merging with existing data...');
             $this->line('   HTTP caches cleared, fetching fresh data from sources.');
             $this->line('   Existing teas will be updated with better data only.');
             $this->newLine();
@@ -111,7 +111,7 @@ class ScrapeTeaData extends Command
 
         // Clear existing scraped data if requested (NOT RECOMMENDED - use with caution)
         if ($clear) {
-            $this->warn('⚠️  WARNING: --clear will DELETE all existing scraped teas!');
+            $this->warn('  WARNING: --clear will DELETE all existing scraped teas!');
             $this->warn('   This is NOT recommended. Data will be lost if scraping fails.');
             $this->warn('   Use --fresh instead to merge/update without losing data.');
             $this->newLine();
@@ -218,6 +218,12 @@ class ScrapeTeaData extends Command
                 if (empty($canonical->shop_link) && !empty($dupe->shop_link)) {
                     $canonical->shop_link = $dupe->shop_link;
                 }
+                if (empty($canonical->shopee_link) && !empty($dupe->shopee_link)) {
+                    $canonical->shopee_link = $dupe->shopee_link;
+                }
+                if (empty($canonical->lazada_link) && !empty($dupe->lazada_link)) {
+                    $canonical->lazada_link = $dupe->lazada_link;
+                }
                 if (empty($canonical->source_url) && !empty($dupe->source_url)) {
                     $canonical->source_url = $dupe->source_url;
                 }
@@ -287,7 +293,11 @@ class ScrapeTeaData extends Command
         // Try to find shop links in the page
         $shopLinks = $this->extractShopLinks($crawler, $url);
 
-        $crawler->filter('h2')->each(function ($node) use ($sourceUrl, $shopLinks) {
+        // Collect guide links to follow AFTER the main pass (avoids nested requests
+        // corrupting the current crawler state).
+        $guideFollowUps = [];
+
+        $crawler->filter('h2')->each(function ($node) use ($sourceUrl, $shopLinks, &$guideFollowUps) {
             $heading = trim($node->text(''));
             if ($heading === '' || !preg_match('/^\s*(\d+)\.\s*(.+)$/', $heading, $m)) {
                 return;
@@ -303,49 +313,67 @@ class ScrapeTeaData extends Command
                 $this->line("  Found: {$name}");
             }
 
-            // Extract benefit with multiple fallback strategies
-            $benefit = 'N/A';
+            // Gather the description paragraphs that belong to THIS tea, i.e. every
+            // sibling paragraph until the next "N. Tea" heading. Also detect a link
+            // to a dedicated benefit/guide page for this tea.
+            $paragraphs = [];
+            $guideLink = null;
+            $stopped = false;
+
             try {
-                // Strategy 1: Find first non-empty paragraph after heading
-                // (skip empty paragraphs that may follow images)
-                $paragraphs = $node->nextAll()->filter('p');
-                $paragraphs->each(function($p) use (&$benefit) {
-                    if ($benefit !== 'N/A') return;
-                    $text = trim($p->text(''));
-                    if (strlen($text) > 20) { // Must have meaningful content
-                        $benefit = $text;
+                $node->nextAll()->each(function ($sib) use (&$paragraphs, &$guideLink, &$stopped, $name) {
+                    if ($stopped) {
+                        return;
+                    }
+                    $tag = strtolower($sib->nodeName());
+
+                    // Stop when we reach the next tea heading
+                    if ($tag === 'h2') {
+                        $stopped = true;
+                        return;
+                    }
+
+                    if ($tag === 'p') {
+                        $text = trim($sib->text(''));
+                        if (strlen($text) > 30) {
+                            $paragraphs[] = $text;
+                        }
+
+                        // Look for a "guide to X" / health-benefits link for this tea
+                        if ($guideLink === null) {
+                            $sib->filter('a')->each(function ($a) use (&$guideLink) {
+                                if ($guideLink !== null) {
+                                    return;
+                                }
+                                $href = $a->attr('href');
+                                $anchorText = strtolower(trim($a->text('')));
+                                if (empty($href)) {
+                                    return;
+                                }
+                                $isInternal = stripos($href, 'nutritionadvance.com') !== false || str_starts_with($href, '/');
+                                $looksLikeGuide = stripos($anchorText, 'guide') !== false
+                                    || stripos($href, 'benefits') !== false
+                                    || stripos($href, 'guide') !== false;
+                                if ($isInternal && $looksLikeGuide) {
+                                    $guideLink = $href;
+                                }
+                            });
+                        }
                     }
                 });
-                
-                // Strategy 2: List items following heading
-                if ($benefit === 'N/A') {
-                    $nextUl = $node->nextAll()->filter('ul')->first();
-                    if ($nextUl->count() > 0) {
-                        $items = $nextUl->filter('li')->slice(0, 3)->each(function($li) {
-                            return trim($li->text(''));
-                        });
-                        $benefit = implode('; ', array_filter($items));
-                    }
-                }
-                
-                // Strategy 3: Any text in the same section
-                if ($benefit === 'N/A') {
-                    $parent = $node->ancestors()->filter('section, article, div')->first();
-                    if ($parent->count() > 0) {
-                        // Find first non-empty paragraph in parent
-                        $parent->filter('p')->each(function($p) use (&$benefit) {
-                            if ($benefit !== 'N/A') return;
-                            $text = trim($p->text(''));
-                            if (strlen($text) > 20) {
-                                $benefit = $this->cleanBenefitText($text);
-                            }
-                        });
-                    }
-                }
-            } catch (\Throwable $e) {}
-            
+            } catch (\Throwable $e) {
+                // Fall back to whatever paragraphs we collected
+            }
+
+            // Build the benefit description from the first couple of paragraphs
+            $benefit = 'N/A';
+            if (!empty($paragraphs)) {
+                $description = implode(' ', array_slice($paragraphs, 0, 2));
+                $benefit = $this->cleanBenefitText($description, 500);
+            }
+
             // Final fallback
-            if ($benefit === 'N/A') {
+            if ($benefit === 'N/A' || strlen($benefit) < 10) {
                 $benefit = $this->getDefaultBenefitForTea($name);
             }
 
@@ -356,7 +384,100 @@ class ScrapeTeaData extends Command
             // Try to find a specific shop link for this tea, otherwise use generic
             $shopLink = $shopLinks[$name] ?? $this->findShopLinkForTea($name) ?? null;
             $this->saveTea($name, $flavor, $caffeine, $benefit, $sourceUrl, $shopLink);
+
+            // Queue the guide link so we can enrich the benefit afterwards
+            if ($guideLink !== null) {
+                $guideFollowUps[$name] = $this->makeAbsoluteUrl($guideLink, $sourceUrl);
+            }
         });
+
+        // Follow benefit/guide links to enrich descriptions where available.
+        foreach ($guideFollowUps as $teaName => $guideUrl) {
+            $richBenefit = $this->fetchGuideBenefit($client, $guideUrl);
+            if ($richBenefit !== null) {
+                $normalized = $this->normalizeTeaName($teaName);
+                $tea = Tea::whereRaw('LOWER(name) = ?', [strtolower($normalized)])->first();
+                if ($tea) {
+                    // Only replace if the guide description is higher quality
+                    if ($this->scoreBenefitQuality($richBenefit) > $this->scoreBenefitQuality($tea->health_benefit ?? '')) {
+                        $tea->health_benefit = $richBenefit;
+                        $tea->save();
+                        if ($this->verbose) {
+                            $this->line("  🔗 Enriched benefit for '{$normalized}' from guide page");
+                        }
+                    }
+                }
+            }
+            $this->microDelay();
+        }
+    }
+
+    /**
+     * Follow a tea's dedicated guide/benefit page and extract a concise summary.
+     * Prefers the page meta description, falling back to the first real paragraph.
+     */
+    protected function fetchGuideBenefit(Client $client, string $url): ?string
+    {
+        try {
+            $crawler = $client->request('GET', $url);
+            $status = $client->getResponse()->getStatusCode();
+            if ($status >= 400) {
+                return null;
+            }
+
+            // 1) Meta description - but only if it is a real benefit summary and
+            //    not a clickbait teaser/question (e.g. "...does it offer benefits?").
+            foreach (['meta[name="description"]', 'meta[property="og:description"]'] as $sel) {
+                $meta = $crawler->filter($sel)->first();
+                if ($meta->count() > 0) {
+                    $content = trim($meta->attr('content') ?? '');
+                    if (strlen($content) > 40 && !$this->isTeaserText($content)) {
+                        return $this->cleanBenefitText($content, 500);
+                    }
+                }
+            }
+
+            // 2) First substantial, non-teaser paragraph in the article body
+            $best = null;
+            $crawler->filter('article p, .entry-content p, .post-content p, main p, p')->each(function ($p) use (&$best) {
+                if ($best !== null) {
+                    return;
+                }
+                $text = trim($p->text(''));
+                if (strlen($text) > 60 && !$this->isTeaserText($text)) {
+                    $best = $this->cleanBenefitText($text, 500);
+                }
+            });
+
+            return $best;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Detect clickbait/teaser text that poses a question or promises info rather
+     * than actually describing the tea's benefits.
+     */
+    protected function isTeaserText(string $text): bool
+    {
+        if (strpos($text, '?') !== false) {
+            return true;
+        }
+        $teaserPatterns = [
+            '/here\'?s?\s+(a\s+)?guide/i',
+            '/what\s+the\s+research\s+says/i',
+            '/does\s+it\s+(offer|have|provide)/i',
+            '/in\s+this\s+(article|guide|post)/i',
+            '/let\'?s\s+(take\s+a\s+)?look/i',
+            '/read\s+(on|more)/i',
+        ];
+        foreach ($teaserPatterns as $pattern) {
+            if (preg_match($pattern, $text)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -376,148 +497,198 @@ class ScrapeTeaData extends Command
             return;
         }
 
-        // Find tea sections and extract both name and benefit dynamically
-        $headings = $crawler->filter('h3');
-        $this->line('  Found ' . $headings->count() . ' h3 elements');
-        
+        // Locate the article body so headings & paragraphs are in document order.
+        $container = $this->findArticleContainer($crawler) ?? $crawler;
+
         // Scrape dedicated shop page for direct product links
         $productLinks = [];
         if (!empty($shopUrl)) {
             $productLinks = $this->scrapeShopPage($client, $shopUrl);
             $this->microDelay();
         }
-        
-        // Fallback: Try to find shop links in the article page
+
+        // Fallback: shop links found within the article page
         $shopLinks = $this->extractShopLinks($crawler, $url);
-        
-        // Add delay after extracting shop links
         $this->microDelay();
 
-        if ($this->verbose) {
-            // Check the actual HTML content
-            $html = $crawler->html();
-            $this->line('  HTML length: ' . strlen($html) . ' characters');
+        // Walk the article in document order. Each tea is a heading ending in
+        // "tea" followed by its description paragraph. We keep the FULL first
+        // sentence-paragraph (which contains the health-benefit description);
+        // product-card captions that sometimes follow have no period and are
+        // skipped so the stored description stays valid.
+        $entries = $this->collectSimpleLeafEntries($container);
+        $this->line('  Found ' . count($entries) . ' tea descriptions');
 
-            // Look for common patterns that might indicate tea content
-            if (stripos($html, 'chamomile') !== false) {
-                $this->line('  Found chamomile in HTML');
-            }
-            if (stripos($html, 'peppermint') !== false) {
-                $this->line('  Found peppermint in HTML');
-            }
-            if (stripos($html, 'benefit') !== false) {
-                $this->line('  Found benefit in HTML');
+        foreach ($entries as $name => $benefit) {
+            $shopLink = $this->matchTeaToProductLink($name, $productLinks, $shopUrl)
+                ?? ($shopLinks[$name] ?? null)
+                ?? $this->findShopLinkForTea($name)
+                ?? null;
+
+            $flavor = $this->detectFlavor($name . ' ' . $benefit);
+            $this->saveTea($name, $flavor, 'Caffeine-free', $benefit, $sourceUrl, $shopLink);
+        }
+    }
+
+    /**
+     * Walk the SimpleLooseLeaf article DOM and map each tea name to its full
+     * description. The site wraps each tea name in an <ol> but leaves the
+     * description as bare text nodes / <span> / <a> elements directly under
+     * the .rte container (NOT inside <p> tags). We therefore walk ALL child
+     * nodes of the container in document order instead of using CSS selectors.
+     *
+     * Returns: [ displayName => benefitText ]
+     */
+    protected function collectSimpleLeafEntries($container): array
+    {
+        $entries = [];
+
+        try {
+            $dom = $container->getNode(0);
+            if (!$dom) {
+                return $entries;
             }
 
-            // Check if we're being blocked or redirected
-            if (stripos($html, 'access denied') !== false || stripos($html, 'blocked') !== false) {
-                $this->line('  Possible access blocking detected');
-            }
-            if (stripos($html, 'captcha') !== false || stripos($html, 'robot') !== false) {
-                $this->line('  Possible bot protection detected');
-            }
+            $currentName = null;
+            $descParts   = [];  // text fragments for the current tea
 
-            // Try different selectors to find tea names
-            $selectors = ['h2', 'h3', 'h4', '.tea-name', '[class*="tea"]', '[class*="herb"]', 'li', 'p'];
-            foreach ($selectors as $selector) {
-                $elements = $crawler->filter($selector);
-                $this->line('  Found ' . $elements->count() . ' ' . $selector . ' elements');
+            // Flush accumulated description text into $entries under $currentName.
+            $flush = function () use (&$currentName, &$descParts, &$entries) {
+                if ($currentName === null) {
+                    $descParts = [];
+                    return;
+                }
+                $raw = implode(' ', $descParts);
+                $raw = trim(preg_replace('/\s+/', ' ', $raw));
+                $descParts = [];
 
-                if ($elements->count() > 0 && $elements->count() < 10) {
-                    $elements->each(function ($node) {
-                        $text = trim($node->text(''));
-                        if (strlen($text) > 5 && strlen($text) < 100) {
-                            $this->line('    Sample: "' . $text . '"');
+                if (strlen($raw) < 30 || strpos($raw, '.') === false) {
+                    return; // too short or no real sentence
+                }
+
+                $benefit = $this->cleanBenefitText($raw, 500);
+                if ($this->isValidBenefit($benefit)) {
+                    // Only store the first (best) description for each tea
+                    if (!isset($entries[$currentName]) || $entries[$currentName] === null) {
+                        $entries[$currentName] = $benefit;
+                    }
+                }
+            };
+
+            foreach ($dom->childNodes as $child) {
+                $type = $child->nodeType;  // 1 = element, 3 = text
+                $name = strtolower($child->nodeName);
+
+                // ------ Section headings (h2/h3/h4/h5/h6) ------
+                if ($type === 1 && preg_match('/^h[2-6]$/', $name)) {
+                    $flush();
+                    $headText = trim($child->textContent);
+                    if (preg_match('/\btea$/i', $headText) && strlen($headText) >= 5 && strlen($headText) <= 50
+                        && !preg_match('/^(benefits?|references?|list of|top\s)/i', $headText)) {
+                        $currentName = $this->normalizeTeaName($headText);
+                        if (!array_key_exists($currentName, $entries)) {
+                            $entries[$currentName] = null;
                         }
-                    });
+                    } else {
+                        $currentName = null;
+                    }
+                    continue;
+                }
+
+                // ------ Ordered list that contains the tea name ------
+                if ($type === 1 && $name === 'ol') {
+                    $flush();
+                    $olText = trim($child->textContent);
+                    if (preg_match('/\btea$/i', $olText) && strlen($olText) >= 5 && strlen($olText) <= 50) {
+                        $currentName = $this->normalizeTeaName($olText);
+                        if (!array_key_exists($currentName, $entries)) {
+                            $entries[$currentName] = null;
+                        }
+                    }
+                    continue;
+                }
+
+                // ------ Skip product caption <p> tags (image alt text etc.) ------
+                if ($type === 1 && $name === 'p') {
+                    $pText = trim($child->textContent);
+                    // Product captions have no period and are short
+                    if (strpos($pText, '.') === false || strlen($pText) < 30) {
+                        continue;
+                    }
+                    // Otherwise treat as description text
+                    if ($currentName !== null && ($entries[$currentName] ?? null) === null) {
+                        $descParts[] = $pText;
+                    }
+                    continue;
+                }
+
+                // ------ Skip <a> that is just a reference like "[1]" ------
+                if ($type === 1 && $name === 'a') {
+                    $aText = trim($child->textContent);
+                    if (preg_match('/^\[\d+\]$/', $aText) || strlen($aText) < 2) {
+                        continue;
+                    }
+                    // Anchor text that is part of the description (e.g. "Studies suggest...")
+                    if ($currentName !== null && ($entries[$currentName] ?? null) === null) {
+                        $descParts[] = $aText;
+                    }
+                    continue;
+                }
+
+                // ------ Bare text nodes & <span> elements = description ------
+                if ($type === 3 || ($type === 1 && $name === 'span')) {
+                    $fragment = trim($child->textContent ?? '');
+                    if ($fragment !== '' && $currentName !== null && ($entries[$currentName] ?? null) === null) {
+                        $descParts[] = $fragment;
+                    }
+                    continue;
                 }
             }
 
-            // Look for any text that might contain tea names
-            $allText = $crawler->text();
-            $teaKeywords = ['chamomile', 'peppermint', 'ginger', 'lavender', 'green tea', 'black tea'];
-            foreach ($teaKeywords as $keyword) {
-                if (stripos($allText, $keyword) !== false) {
-                    $this->line('  Found keyword: ' . $keyword);
-                }
+            // Flush the last tea's accumulated text
+            $flush();
+
+        } catch (\Throwable $e) {
+            // return whatever we collected
+        }
+
+        // Fill in defaults for tea names that had no usable description.
+        foreach ($entries as $name => $benefit) {
+            if ($benefit === null) {
+                $entries[$name] = $this->getDefaultBenefitForTea($name);
             }
         }
 
-        $headings->each(function ($node) use ($sourceUrl, $shopLinks, $productLinks, $shopUrl) {
-            $teaName = trim($node->text(''));
-            if ($this->verbose) {
-                $this->line('  Processing heading: "' . $teaName . '"');
-            }
-
-            if ($teaName === '' || strlen($teaName) < 3) {
-                $this->skipped++;
-                return;
-            }
-
-            // Clean up tea name
-            $name = preg_replace('/\s+tea\s+tea$/i', ' Tea', $teaName);
-            $name = preg_replace('/\s+tea$/i', ' Tea', $name);
-            $name = trim($name);
-
-            // Extract benefit with multiple strategies for blog-style sites
-            try {
-                $benefit = $this->extractBenefitFromSection($node);
-                
-                // If still N/A, try parent container extraction (for blog layouts)
-                if ($benefit === 'N/A') {
-                    $benefit = $this->extractBenefitFromParentContainer($node);
-                }
-                
-                // Try sibling section extraction
-                if ($benefit === 'N/A') {
-                    $benefit = $this->extractBenefitFromSiblingSection($node);
-                }
-                
-                // Final fallback: use tea-specific default benefit
-                if ($benefit === 'N/A') {
-                    $benefit = $this->getDefaultBenefitForTea($name);
-                }
-                
-                if ($this->verbose) {
-                    $this->line('  Extracted benefit: "' . $benefit . '"');
-                }
-            } catch (\Throwable $e) {
-                // Keep benefit as N/A if extraction fails
-            }
-            
-            // Priority 1: Direct product link from shop page (most accurate)
-            // Priority 2: Shop link found in article page
-            // Priority 3: Fallback to existing tea's shop link
-            $shopLink = $this->matchTeaToProductLink($name, $productLinks, $shopUrl) 
-                ?? $shopLinks[$name] 
-                ?? $this->findShopLinkForTea($name) 
-                ?? null;
-            
-            // Extract flavor with fallback
-            $flavor = $this->detectFlavor($name . ' ' . $benefit);
-            
-            $this->saveTea($name, $flavor, 'Caffeine-free', $benefit, $sourceUrl, $shopLink);
-        });
+        return $entries;
     }
 
     /**
      * Clean and normalize benefit text
      */
-    private function cleanBenefitText(string $text): string
+    private function cleanBenefitText(string $text, int $maxLength = 500): string
     {
         // Remove excessive whitespace
         $text = preg_replace('/\s+/', ' ', $text);
-        
+
+        // Remove reference markers like [1], [23]
+        $text = preg_replace('/\[\d+\]/', '', $text);
+
         // Remove common unwanted patterns
         $text = preg_replace('/^(Benefits?|Health Benefits?):\s*/i', '', $text);
         $text = preg_replace('/\s*Learn more.*$/i', '', $text);
         $text = preg_replace('/\s*Read more.*$/i', '', $text);
-        
-        // Limit length
-        if (strlen($text) > 200) {
-            $text = substr($text, 0, 197) . '...';
+
+        // Limit length (keep whole sentences where possible)
+        if (strlen($text) > $maxLength) {
+            $text = substr($text, 0, $maxLength - 3);
+            $lastPeriod = strrpos($text, '.');
+            if ($lastPeriod !== false && $lastPeriod > $maxLength * 0.5) {
+                $text = substr($text, 0, $lastPeriod + 1);
+            } else {
+                $text .= '...';
+            }
         }
-        
+
         return trim($text) ?: 'N/A';
     }
 
@@ -805,106 +976,352 @@ class ScrapeTeaData extends Command
         // Add delay after extracting shop links
         $this->microDelay();
 
-        // Look for tea entries with different possible selectors
-        // Try list-based structure first (common on blog sites like theteahouseonlosrios.com)
-        $selectors = [
-            'ol li',        // Ordered list items (most common for tea lists)
-            'ul li',        // Unordered list items
-            'li',           // Any list item
-            'h3',           // Headings
-            'h4',           // Subheadings
-            '.tea-name',    // Specific tea name class
-            '.benefit-item h3', // Tea names in benefit sections
-        ];
+        // The Tea House article is a numbered list where each entry has the form:
+        //   "N. <benefit> - <tea name(s)>"
+        // i.e. the benefit comes BEFORE the dash and the tea name(s) AFTER it.
+        // e.g. "1. Help with sleep - Chamomile tea"
+        //      "3. Relaxation and stress relief - Chamomile tea, Lavender tea"
 
-        foreach ($selectors as $selector) {
-            $found = false;
-            $crawler->filter($selector)->each(function ($node) use (&$found, $sourceUrl, $shopUrl, $shopLinks, $productLinks, $url) {
-                // Try to extract tea name from structured content (list items often have <strong> or <b>)
-                $teaName = $this->extractTeaNameFromNode($node);
-                
-                // Skip if doesn't look like a tea name
-                if ($teaName === '' || strlen($teaName) < 3) {
-                    return;
-                }
+        // 1) Locate the article body container that holds the list.
+        $container = $this->findArticleContainer($crawler) ?? $crawler;
 
-                // Skip common non-tea headings
-                $skipPatterns = ['/^\d+\./', '/benefits?/i', '/health/i', '/wellness/i', '/types? of/i', '/power of/i', '/^tea$/i'];
-                foreach ($skipPatterns as $pattern) {
-                    if (preg_match($pattern, $teaName)) {
-                        return;
-                    }
-                }
+        // 2) Build entries from the list items. The numbers come from the <ol>
+        //    element (CSS), so they are NOT in the text - each <li> simply reads
+        //    "<benefit> - <tea name(s)>". We keep the anchors local to each <li>
+        //    so shop links map to the correct tea.
+        $entries = $this->collectTeaHouseEntries($container, $url);
 
-                // Clean up tea name
-                $name = preg_replace('/\s+tea\s+tea$/i', ' Tea', $teaName);
-                $name = preg_replace('/\s+tea$/i', ' Tea', $name);
-                $name = trim($name);
+        // Fallback: if the list is not <li> based, parse the raw text for
+        //    "N. benefit - tea names" patterns.
+        if (empty($entries)) {
+            $entries = $this->parseTeaHouseEntries($container->text(''));
+        }
 
-                if (strlen($name) < 3) {
-                    return;
+        // Global anchor map as a last-resort for shop links
+        $anchorMap = $this->buildAnchorMap($container, $url);
+
+        $this->line('  Found ' . count($entries) . ' benefit/tea entries');
+
+        foreach ($entries as $entry) {
+            $benefit = $entry['benefit'];
+            $localAnchors = $entry['anchors'] ?? [];
+
+            foreach ($entry['teas'] as $rawTeaName) {
+                $name = $this->cleanTeaHouseName($rawTeaName);
+                if ($name === null) {
+                    continue; // generic / non-specific entry, skip
                 }
 
                 if ($this->verbose) {
-                    $this->line("  Found: {$name}");
+                    $this->line("  Found: {$name} (benefit: {$benefit})");
                 }
 
-                // Extract full text content for parsing flavor/caffeine info
-                $fullText = $node->text('');
-                
-                // Try to extract shop link from anchor tags within this node
-                $nodeShopLink = $this->extractShopLinkFromNode($node, $url);
-                
-                // Extract benefit with multiple fallback strategies
-                // For list items, the structure is often: <strong>Tea Name</strong> - Benefit description
-                $benefit = $this->extractBenefitFromListItem($node, $name);
-                if ($benefit === 'N/A') {
-                    $benefit = $this->extractBenefitFromSection($node);
-                }
-                if ($benefit === 'N/A') {
-                    $benefit = $this->extractBenefitFromParent($node);
-                }
-                // Final fallback: use default benefit based on tea type
-                if ($benefit === 'N/A' || strlen($benefit) < 10) {
-                    $benefit = $this->getDefaultBenefitForTea($name);
-                }
-                
-                // Extract caffeine with fallback - try to find in text first
-                $caffeine = $this->extractCaffeineFromText($fullText);
-                if ($caffeine === 'N/A') {
-                    $caffeine = $this->extractCaffeineInfo($node);
-                }
-                if ($caffeine === 'N/A') {
-                    $caffeine = $this->detectCaffeineLevel($name . ' ' . $benefit);
-                }
-                
-                // Extract flavor with fallback - try to find in text first  
-                $flavor = $this->extractFlavorFromText($fullText);
-                if ($flavor === 'herbal' || $flavor === 'neutral') {
-                    $flavor = $this->detectFlavor($name . ' ' . $benefit);
-                }
-                
-                // Priority 1: Shop link found directly in the node (anchor tag)
-                // Priority 2: Direct product link from shop page (most accurate)
-                // Priority 3: Shop link found in article page
-                // Priority 4: Fallback to existing tea's shop link
-                $shopLink = $nodeShopLink
-                    ?? $this->matchTeaToProductLink($name, $productLinks, $shopUrl) 
-                    ?? $shopLinks[$name] 
-                    ?? $this->findShopLinkForTea($name) 
+                // Detect flavor & caffeine from the tea name + benefit context
+                $flavor = $this->detectFlavor($name . ' ' . $benefit);
+                $caffeine = $this->detectCaffeineLevel($name . ' ' . $benefit);
+
+                // Shop link priority:
+                //  1) anchor inside this list item (most accurate, correct tea)
+                //  2) matching anchor elsewhere in the article
+                //  3) product match from the dedicated shop page
+                //  4) shop links found elsewhere / existing tea / generated search
+                $shopLink = $this->matchAnchorForTea($name, $rawTeaName, $localAnchors)
+                    ?? $this->matchAnchorForTea($name, $rawTeaName, $anchorMap)
+                    ?? $this->matchTeaToProductLink($name, $productLinks, $shopUrl)
+                    ?? ($shopLinks[$name] ?? null)
+                    ?? $this->findShopLinkForTea($name)
                     ?? null;
 
                 $this->saveTea($name, $flavor, $caffeine, $benefit, $sourceUrl, $shopLink);
-                $found = true;
-            });
-
-            if ($found) {
-                if ($this->verbose) {
-                    $this->line("  Using selector: {$selector}");
-                }
-                break; // Stop if we found tea names with this selector
             }
         }
+    }
+
+    /**
+     * Collect Tea House entries from list items.
+     * Each <li> reads "<benefit> - <tea name(s)>"; the leading number is rendered
+     * by the <ol> element and is therefore not part of the text.
+     * Returns: [ ['benefit' => string, 'teas' => [..], 'anchors' => [text=>href]], ... ]
+     */
+    protected function collectTeaHouseEntries($container, string $baseUrl): array
+    {
+        $entries = [];
+
+        try {
+            $container->filter('ol li, ul li')->each(function ($li) use (&$entries, $baseUrl) {
+                $text = trim(preg_replace('/\s+/', ' ', $li->text('')));
+
+                // Must contain a spaced dash separating benefit from tea name(s)
+                if ($text === '' || !preg_match('/\s[-–—]\s/u', $text)) {
+                    return;
+                }
+
+                $split = $this->splitBenefitAndTeas($text);
+                if ($split === null) {
+                    return;
+                }
+
+                // Collect anchors local to this list item (correct tea -> shop link)
+                $anchors = [];
+                $li->filter('a[href]')->each(function ($a) use (&$anchors, $baseUrl) {
+                    $href = $a->attr('href');
+                    $anchorText = strtolower(trim($a->text('')));
+                    if (empty($href) || $anchorText === '') {
+                        return;
+                    }
+                    if (stripos($href, '/products/') === false && stripos($href, '/collections/') === false) {
+                        return;
+                    }
+                    $anchors[$anchorText] = $this->makeAbsoluteUrl($href, $baseUrl);
+                });
+
+                $entries[] = [
+                    'benefit' => $split['benefit'],
+                    'teas' => $split['teas'],
+                    'anchors' => $anchors,
+                ];
+            });
+        } catch (\Throwable $e) {
+            // return whatever we collected
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Split a single "<benefit> - <tea names>" line into its parts.
+     * Returns ['benefit' => string, 'teas' => [..]] or null when it does not
+     * follow the expected shape.
+     */
+    protected function splitBenefitAndTeas(string $line): ?array
+    {
+        // Drop a leading "N." if it is present in the text
+        $line = preg_replace('/^\s*\d{1,3}\.\s*/', '', $line);
+
+        // Split on the FIRST spaced dash so hyphenated words (e.g. "Anti-inflammatory")
+        // are preserved in the benefit.
+        $parts = preg_split('/\s+[-–—]\s+/u', $line, 2);
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        $benefit = $this->cleanBenefitText(trim($parts[0]), 300);
+        $teaPortion = trim($parts[1]);
+
+        if ($benefit === 'N/A' || strlen($benefit) < 3 || $teaPortion === '') {
+            return null;
+        }
+
+        $benefit = ucfirst($benefit);
+        if (strlen($benefit) < 25) {
+            $benefit .= ' — a wellness benefit of this tea.';
+        }
+
+        $teas = $this->splitTeaNames($teaPortion);
+        if (empty($teas)) {
+            return null;
+        }
+
+        return ['benefit' => $benefit, 'teas' => $teas];
+    }
+
+    /**
+     * Locate the main article body container on a blog page.
+     */
+    protected function findArticleContainer($crawler)
+    {
+        $selectors = [
+            '.article__body', '.article-content', '.article__content',
+            '.rte', 'article .rte', 'article', '.post-content', '.blog-post',
+            'main',
+        ];
+
+        foreach ($selectors as $selector) {
+            try {
+                $node = $crawler->filter($selector)->first();
+                if ($node->count() > 0 && strlen(trim($node->text(''))) > 200) {
+                    return $node;
+                }
+            } catch (\Throwable $e) {
+                // try next selector
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build a map of lowercased anchor text => absolute href for shop-link matching.
+     */
+    protected function buildAnchorMap($crawler, string $baseUrl): array
+    {
+        $map = [];
+        try {
+            $crawler->filter('a[href]')->each(function ($a) use (&$map, $baseUrl) {
+                $href = $a->attr('href');
+                $anchorText = strtolower(trim($a->text('')));
+                if ($href === null || $anchorText === '' || strlen($anchorText) < 3) {
+                    return;
+                }
+                if (str_starts_with($href, '#') || str_starts_with($href, 'javascript')) {
+                    return;
+                }
+                // Only keep links that point to a product/collection page
+                if (stripos($href, '/products/') === false && stripos($href, '/collections/') === false) {
+                    return;
+                }
+                $map[$anchorText] = $this->makeAbsoluteUrl($href, $baseUrl);
+            });
+        } catch (\Throwable $e) {
+            // return whatever we have
+        }
+        return $map;
+    }
+
+    /**
+     * Parse the Tea House list text into structured entries.
+     * Returns: [ ['benefit' => string, 'teas' => [string, ...]], ... ]
+     */
+    protected function parseTeaHouseEntries(string $text): array
+    {
+        $entries = [];
+
+        // Match "N. <benefit> - <teas>" up to the next numbered item or end of string.
+        // The separator must be a dash surrounded by spaces so hyphenated words
+        // like "Anti-inflammatory" are not split incorrectly.
+        $pattern = '/(\d{1,3})\.\s+(.+?)\s+[-–—]\s+(.+?)(?=\s+\d{1,3}\.\s|$)/su';
+
+        if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $benefit = trim($m[2]);
+                $teaPortion = trim($m[3]);
+
+                $benefit = $this->cleanBenefitText($benefit, 300);
+                if ($benefit === 'N/A' || strlen($benefit) < 3) {
+                    continue;
+                }
+
+                $benefit = ucfirst($benefit);
+
+                // Short benefit phrases (e.g. "Help with sleep") are expanded into a
+                // readable sentence so they pass validation and read well in the UI.
+                if (strlen($benefit) < 25) {
+                    $benefit .= ' — a wellness benefit of this tea.';
+                }
+
+                $teas = $this->splitTeaNames($teaPortion);
+                if (empty($teas)) {
+                    continue;
+                }
+
+                $entries[] = [
+                    'benefit' => $benefit,
+                    'teas' => $teas,
+                ];
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Split the "tea names" portion after the dash into individual tea names.
+     */
+    protected function splitTeaNames(string $portion): array
+    {
+        // Drop parenthetical notes like "(e.g., rooibos, chamomile)" which contain
+        // stray commas that would break naive splitting.
+        $portion = preg_replace('/\([^)]*\)/', '', $portion);
+
+        // Split on commas and the word "and"
+        $parts = preg_split('/\s*,\s*|\s+and\s+/i', $portion);
+
+        $names = [];
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part !== '') {
+                $names[] = $part;
+            }
+        }
+        return $names;
+    }
+
+    /**
+     * Clean and validate a single Tea House tea name.
+     * Returns the normalised display name, or null if it is too generic to store.
+     */
+    protected function cleanTeaHouseName(string $name): ?string
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name));
+
+        // Skip generic, non-specific descriptions
+        $genericPatterns = [
+            '/various\s+types?/i',
+            '/any\s+type/i',
+            '/based\s+on\s+culture/i',
+            '/^different\b/i',
+        ];
+        foreach ($genericPatterns as $pattern) {
+            if (preg_match($pattern, $name)) {
+                return null;
+            }
+        }
+
+        // Normalise plural "teas" -> "tea"
+        $name = preg_replace('/\bteas\b/i', 'tea', $name);
+
+        // Must reference a tea/herb to be a valid entry
+        if (stripos($name, 'tea') === false) {
+            return null;
+        }
+
+        // Drop entries that are only the word "tea"
+        if (preg_match('/^tea$/i', trim($name))) {
+            return null;
+        }
+
+        $normalized = $this->normalizeTeaName($name);
+
+        if (strlen($normalized) < 5) {
+            return null;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Find the best matching anchor href for a tea name.
+     */
+    protected function matchAnchorForTea(string $normalizedName, string $rawName, array $anchorMap): ?string
+    {
+        if (empty($anchorMap)) {
+            return null;
+        }
+
+        $candidates = [
+            strtolower(trim($rawName)),
+            strtolower(trim($normalizedName)),
+            strtolower(preg_replace('/\s+tea\s*$/i', '', $normalizedName)),
+        ];
+
+        // Exact anchor-text match first
+        foreach ($candidates as $candidate) {
+            if ($candidate !== '' && isset($anchorMap[$candidate])) {
+                return $anchorMap[$candidate];
+            }
+        }
+
+        // Partial match: anchor text contains the tea keyword (e.g. "green tea")
+        $keyword = strtolower(preg_replace('/\s+tea\s*$/i', '', $normalizedName));
+        if (strlen($keyword) >= 3) {
+            foreach ($anchorMap as $anchorText => $href) {
+                if (strpos($anchorText, $keyword) !== false) {
+                    return $href;
+                }
+            }
+        }
+
+        return null;
     }
     
     /**
@@ -956,6 +1373,11 @@ class ScrapeTeaData extends Command
             if (preg_match($pattern, $benefit)) {
                 return false;
             }
+        }
+
+        // Reject clickbait/teaser text that doesn't actually describe benefits
+        if ($this->isTeaserText($benefit)) {
+            return false;
         }
         
         return strlen($benefit) > 20;
@@ -1058,6 +1480,11 @@ class ScrapeTeaData extends Command
                 $score -= 2; // Slight penalty for vague language
             }
         }
+
+        // Heavily penalize clickbait/teaser text that doesn't describe actual benefits
+        if ($this->isTeaserText($benefit)) {
+            $score -= 50;
+        }
         
         // Bonus for multiple distinct benefits (comma or period separated)
         $benefitCount = substr_count($benefitLower, ',') + substr_count($benefitLower, '.') + 1;
@@ -1141,7 +1568,13 @@ class ScrapeTeaData extends Command
             $tea->health_benefit = $this->getDefaultBenefitForTea($normalizedName);
         }
         
-        $tea->image = $placeholderImage;
+        // Only set placeholder image for new teas or if current image is already a placeholder URL
+        // Never overwrite admin-uploaded images (stored as local paths like "teas/xxx.jpg")
+        $currentImage = $tea->image ?? '';
+        $isLocalUpload = !empty($currentImage) && !str_starts_with($currentImage, 'http') && !str_starts_with($currentImage, '//');
+        if (!$isLocalUpload) {
+            $tea->image = $placeholderImage;
+        }
 
         // Save source URL
         if (!empty($sourceUrl)) {
@@ -1151,12 +1584,34 @@ class ScrapeTeaData extends Command
         // Save shop link if provided, otherwise try to find from other sources
         if (!empty($shopLink)) {
             $tea->shop_link = $shopLink;
+
+            // Sync source-specific shop links with Shopee/Lazada columns
+            if (stripos($shopLink, 'shopee.com') !== false) {
+                $tea->shopee_link = $shopLink;
+            } elseif (stripos($shopLink, 'lazada.com') !== false) {
+                $tea->lazada_link = $shopLink;
+            }
         } elseif (empty($tea->shop_link)) {
             // Try to find shop link from other sources with same tea name
             $fallbackLink = $this->findShopLinkForTea($normalizedName);
             if ($fallbackLink) {
                 $tea->shop_link = $fallbackLink;
+
+                if (stripos($fallbackLink, 'shopee.com') !== false) {
+                    $tea->shopee_link = $fallbackLink;
+                } elseif (stripos($fallbackLink, 'lazada.com') !== false) {
+                    $tea->lazada_link = $fallbackLink;
+                }
             }
+        }
+
+        // Fall back to Shopee/Lazada search URLs when not set
+        $encodedName = urlencode($normalizedName);
+        if (empty($tea->shopee_link)) {
+            $tea->shopee_link = 'https://shopee.com.my/search?keyword=' . $encodedName;
+        }
+        if (empty($tea->lazada_link)) {
+            $tea->lazada_link = 'https://www.lazada.com.my/catalog/?q=' . $encodedName;
         }
 
         $tea->save();

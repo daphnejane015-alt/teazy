@@ -88,6 +88,24 @@
                 font-weight: 600;
             }
             
+            .input-group input.pr-12 {
+                padding-right: 3rem;
+            }
+            
+            .toggle-password {
+                position: absolute;
+                right: 12px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: var(--text-light);
+                cursor: pointer;
+                z-index: 10;
+            }
+            
+            .toggle-password:hover {
+                color: var(--primary-green);
+            }
+            
             .tea-logo {
                 width: 80px;
                 height: 80px;
@@ -105,6 +123,7 @@
 
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @include('layouts.partials.pwa')
     </head>
     <body class="font-sans text-gray-900 antialiased">
         <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 px-4">
@@ -125,9 +144,32 @@
             <!-- Footer -->
             <div class="mt-8 text-center">
                 <p class="text-green-800/60 text-sm">
-                    © 2024 Tea Recommendation. All rights reserved.
+                    © 2026 Tea Recommendation. All rights reserved.
                 </p>
             </div>
         </div>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                document.querySelectorAll('.toggle-password').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const inputId = this.getAttribute('data-target');
+                        const input = document.getElementById(inputId);
+                        if (!input) return;
+
+                        const isHidden = input.type === 'password';
+                        input.type = isHidden ? 'text' : 'password';
+                        this.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+
+                        const openIcon = this.querySelector('.eye-open');
+                        const closedIcon = this.querySelector('.eye-closed');
+                        if (openIcon && closedIcon) {
+                            openIcon.classList.toggle('hidden', !isHidden);
+                            closedIcon.classList.toggle('hidden', isHidden);
+                        }
+                    });
+                });
+            });
+        </script>
     </body>
 </html>

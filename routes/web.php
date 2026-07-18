@@ -15,6 +15,10 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('/about-us', function () {
+    return view('about-us');
+})->name('about.us');
+
 
 /*
 |--------------------------------------------------------------------------
@@ -67,6 +71,9 @@ Route::middleware(['admin'])->group(function () {
 
     Route::put('/admin/teas/{id}', [TeaController::class, 'update'])
         ->name('admin.teas.update');
+
+    Route::post('/admin/teas/generate-ai-descriptions', [TeaController::class, 'generateAiDescriptions'])
+        ->name('admin.teas.generateAi');
 
     Route::post('/admin/scrape-teas', [TeaController::class, 'scrape'])
         ->name('admin.scrape.teas');
@@ -127,7 +134,7 @@ Route::middleware(['admin'])->group(function () {
 | USER ROUTES
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/dashboard', [UserDashboardController::class, 'index'])
         ->name('user.dashboard');
@@ -192,6 +199,14 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/top-rated', [RatingController::class, 'topRated'])
         ->name('top.rated');
+
+    // AI-generated tea description (Gemini) — generated on demand and cached to DB
+    Route::get('/teas/{tea}/ai-description', [App\Http\Controllers\TeaAiController::class, 'description'])
+        ->name('teas.aiDescription');
+
+    // AI-generated tea uses/recipes (Gemini) — generated on demand
+    Route::get('/teas/{tea}/uses', [App\Http\Controllers\TeaAiController::class, 'uses'])
+        ->name('teas.uses');
 
     // Health check endpoint for Railway
 Route::get('/health', [App\Http\Controllers\HealthController::class, 'index']);

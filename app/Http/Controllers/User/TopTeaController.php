@@ -24,15 +24,13 @@ class TopTeaController extends Controller
             // Get weekly weather forecast
             $weeklyForecast = Weather::weeklyForecast($user->preference->city);
             
-            // If no weather data exists, try to fetch it
-            if ($weeklyForecast->isEmpty()) {
-                $weatherService = app(WeatherService::class);
-                $weatherService->getCurrentWeather($user->preference->city);
-                $weatherService->getWeeklyForecast($user->preference->city);
-                
-                // Try again after fetching
-                $weeklyForecast = Weather::weeklyForecast($user->preference->city);
-            }
+            // Fetch weather data using cache (avoid blocking the page load)
+            $weatherService = app(WeatherService::class);
+            $weatherService->getCurrentWeather($user->preference->city, $user->preference->country ?? 'MY', false);
+            $weatherService->getWeeklyForecast($user->preference->city, $user->preference->country ?? 'MY');
+
+            // Get fresh forecast after API call
+            $weeklyForecast = Weather::weeklyForecast($user->preference->city);
             
             if ($weeklyForecast->isNotEmpty()) {
                 // Get weather-based recommendations for the week

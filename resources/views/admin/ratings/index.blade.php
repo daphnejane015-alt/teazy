@@ -110,21 +110,21 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             <div class="flex items-center">
                                 <div class="flex-shrink-0 h-8 w-8">
-                                    <div class="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+                                    <div class="h-8 w-8 rounded-full {{ $rating->user ? 'bg-blue-500' : 'bg-gray-400' }} flex items-center justify-center">
                                         <span class="text-white text-xs font-medium">
-                                            {{ strtoupper(substr($rating->user->name, 0, 1)) }}
+                                            {{ strtoupper(substr($rating->user?->name ?? '?', 0, 1)) }}
                                         </span>
                                     </div>
                                 </div>
                                 <div class="ml-3">
-                                    <div class="text-sm font-medium text-gray-900">{{ $rating->user->name }}</div>
-                                    <div class="text-xs text-gray-500">{{ $rating->user->email }}</div>
+                                    <div class="text-sm font-medium text-gray-900">{{ $rating->user?->name ?? 'Deleted user' }}</div>
+                                    <div class="text-xs text-gray-500">{{ $rating->user?->email ?? 'N/A' }}</div>
                                 </div>
                             </div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-sm font-medium text-gray-900">{{ $rating->tea->name }}</div>
-                            <div class="text-xs text-gray-500">{{ $rating->tea->flavor }}</div>
+                            <div class="text-sm font-medium text-gray-900">{{ $rating->tea?->name ?? 'Deleted tea' }}</div>
+                            <div class="text-xs text-gray-500">{{ $rating->tea?->flavor ?? 'N/A' }}</div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <div class="text-lg font-bold text-blue-600">

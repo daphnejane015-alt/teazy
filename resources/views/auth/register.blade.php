@@ -54,18 +54,27 @@
         </div>
 
         <!-- Password -->
-        <div class="input-group">
+        <div class="input-group relative">
             <input 
                 id="password" 
                 type="password" 
                 name="password" 
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
+                class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
                 placeholder=" "
                 required 
                 autocomplete="new-password"
                 oninput="checkPasswordStrength(this.value)"
             >
             <label for="password" class="bg-white px-1">Password</label>
+            <button type="button" class="toggle-password text-gray-500 hover:text-green-600 focus:outline-none" data-target="password" aria-label="Show password" tabindex="-1">
+                <svg class="eye-open w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                <svg class="eye-closed w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 01-1.18-2.19m15.084 9.393A10.05 10.05 0 0021.542 12C20.268 7.943 16.478 5 12 5a10.05 10.05 0 00-2.68.366M9 9l-1.63 1.63m5.53 5.53l-1.63-1.63M3 3l18 18"/>
+                </svg>
+            </button>
             @error('password')
                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
             @enderror
@@ -102,18 +111,27 @@
         </div>
 
         <!-- Confirm Password -->
-        <div class="input-group">
+        <div class="input-group relative">
             <input 
                 id="password_confirmation" 
                 type="password" 
                 name="password_confirmation" 
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
+                class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
                 placeholder=" "
                 required 
                 autocomplete="new-password"
                 oninput="checkConfirm(this.value)"
             >
             <label for="password_confirmation" class="bg-white px-1">Confirm Password</label>
+            <button type="button" class="toggle-password text-gray-500 hover:text-green-600 focus:outline-none" data-target="password_confirmation" aria-label="Show confirm password" tabindex="-1">
+                <svg class="eye-open w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                <svg class="eye-closed w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 01-1.18-2.19m15.084 9.393A10.05 10.05 0 0021.542 12C20.268 7.943 16.478 5 12 5a10.05 10.05 0 00-2.68.366M9 9l-1.63 1.63m5.53 5.53l-1.63-1.63M3 3l18 18"/>
+                </svg>
+            </button>
             @error('password_confirmation')
                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
             @enderror

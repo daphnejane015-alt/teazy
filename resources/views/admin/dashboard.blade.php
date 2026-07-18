@@ -67,9 +67,20 @@
                 <span class="text-gray-600">Database</span>
                 <span class="text-green-600">✅ Connected</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex justify-between items-center">
                 <span class="text-gray-600">Last Scrape</span>
-                <span class="text-gray-500">Not available</span>
+                @if($scrapeRunning)
+                    <span class="inline-flex items-center font-medium text-blue-600">
+                        <span class="w-2 h-2 bg-blue-600 rounded-full animate-pulse mr-2"></span>
+                        Scraping…
+                    </span>
+                @elseif($lastScrapeAt)
+                    <span class="font-medium text-green-600">
+                        {{ $lastScrapeAt->format('M j, Y g:i A') }}
+                    </span>
+                @else
+                    <span class="text-gray-500">Not available</span>
+                @endif
             </div>
         </div>
     </div>

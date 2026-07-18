@@ -183,9 +183,10 @@
                                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
                             >
                                 <option value="">Select preference</option>
-                                <option value="low" {{ old('caffeine_preference', $user->caffeine_preference) == 'low' ? 'selected' : '' }}>Low / No Caffeine</option>
-                                <option value="medium" {{ old('caffeine_preference', $user->caffeine_preference) == 'medium' ? 'selected' : '' }}>Medium Caffeine</option>
-                                <option value="high" {{ old('caffeine_preference', $user->caffeine_preference) == 'high' ? 'selected' : '' }}>High Caffeine</option>
+                                <option value="low" {{ old('caffeine_preference', $user->caffeine_preference) == 'low' ? 'selected' : '' }}>Low</option>
+                                <option value="medium" {{ old('caffeine_preference', $user->caffeine_preference) == 'medium' ? 'selected' : '' }}>Medium</option>
+                                <option value="high" {{ old('caffeine_preference', $user->caffeine_preference) == 'high' ? 'selected' : '' }}>High</option>
+                                <option value="caffeine_free" {{ old('caffeine_preference', $user->caffeine_preference) == 'caffeine_free' ? 'selected' : '' }}>Caffeine Free</option>
                             </select>
                             @error('caffeine_preference')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
@@ -263,10 +264,6 @@
                         @else
                             <span class="text-yellow-600 font-medium">⚠ Not Verified</span>
                         @endif
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-gray-700">2FA Enabled</span>
-                        <span class="text-gray-500 font-medium">Not Available</span>
                     </div>
                     <div class="flex items-center justify-between">
                         <span class="text-gray-700">Last Login</span>

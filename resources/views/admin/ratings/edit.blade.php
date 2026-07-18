@@ -18,11 +18,11 @@
             <div class="grid grid-cols-2 gap-4 text-sm">
                 <div>
                     <span class="text-gray-500">User:</span>
-                    <span class="ml-2 font-medium">{{ $rating->user->name }} ({{ $rating->user->email }})</span>
+                    <span class="ml-2 font-medium">{{ $rating->user?->name ?? 'Deleted user' }} ({{ $rating->user?->email ?? 'N/A' }})</span>
                 </div>
                 <div>
                     <span class="text-gray-500">Tea:</span>
-                    <span class="ml-2 font-medium">{{ $rating->tea->name }}</span>
+                    <span class="ml-2 font-medium">{{ $rating->tea?->name ?? 'Deleted tea' }}</span>
                 </div>
                 <div>
                     <span class="text-gray-500">Current Rating:</span>
@@ -85,10 +85,10 @@
                 <div class="bg-blue-50 border border-blue-200 rounded-md p-4">
                     <h4 class="text-sm font-medium text-blue-800 mb-2">Tea Information:</h4>
                     <div class="text-xs text-blue-700 space-y-1">
-                        <p><strong>Name:</strong> {{ $rating->tea->name }}</p>
-                        <p><strong>Flavor:</strong> {{ $rating->tea->flavor }}</p>
-                        <p><strong>Caffeine:</strong> {{ $rating->tea->caffeine_level }}</p>
-                        <p><strong>Health Benefit:</strong> {{ Str::limit($rating->tea->health_benefit, 100) }}</p>
+                        <p><strong>Name:</strong> {{ $rating->tea?->name ?? 'Deleted tea' }}</p>
+                        <p><strong>Flavor:</strong> {{ $rating->tea?->flavor ?? 'N/A' }}</p>
+                        <p><strong>Caffeine:</strong> {{ $rating->tea?->caffeine_level ?? 'N/A' }}</p>
+                        <p><strong>Health Benefit:</strong> {{ $rating->tea ? Str::limit($rating->tea->health_benefit, 100) : 'N/A' }}</p>
                     </div>
                 </div>
             </div>

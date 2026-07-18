@@ -1,0 +1,10 @@
+# Files/folders Railway doesn't need to keep in the final image
+node_modules
+vendor
+.env
+.env.local
+storage/logs/*.log
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*.php
+bootstrap/cache/*.php

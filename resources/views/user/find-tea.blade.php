@@ -26,7 +26,7 @@
             <div>
                 <label class="block font-semibold mb-2">Caffeine Level</label>
                 <select name="caffeine" class="w-full border rounded-lg p-3" style="border-color: var(--border-color);" required>
-                    <option value="low">Low / No Caffeine</option>
+                    <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="caffeine_free">Caffeine Free</option>
@@ -69,18 +69,25 @@
                 <!-- Location -->
                 <div class="mb-4">
                     <label class="block font-semibold mb-2">
-                        🇲🇾 Your City (Malaysia Focus)
+                        🇲🇾 Your State (Malaysia)
                     </label>
-                    <input type="text" name="city" placeholder="e.g., Kuala Lumpur, Penang, Johor Bahru" 
-                           list="malaysian-cities"
-                           class="w-full border rounded-lg p-3" style="border-color: var(--border-color);">
-                    <datalist id="malaysian-cities">
-                        @foreach(\App\Services\WeatherService::getMalaysianCities() as $city)
-                            <option value="{{ $city }}">
+                    <select id="stateSelect" name="state" class="w-full border rounded-lg p-3" style="border-color: var(--border-color);">
+                        <option value="">Select State</option>
+                        @foreach(\App\Services\WeatherService::getMalaysianStates() as $state => $cities)
+                            <option value="{{ $state }}">{{ $state }}</option>
                         @endforeach
-                    </datalist>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block font-semibold mb-2">
+                        🏙️ Your City
+                    </label>
+                    <select id="citySelect" name="city" class="w-full border rounded-lg p-3" style="border-color: var(--border-color);" disabled>
+                        <option value="">Select State First</option>
+                    </select>
                     <p class="text-xs mt-1" style="color: var(--text-light);">
-                        🌏 System optimized for Malaysian cities • Auto-detects Malaysian locations
+                        🌏 Cities verified with OpenWeather API • Select your state to see available cities
                     </p>
                 </div>
 
@@ -111,3 +118,52 @@
 </div>
 
 @endsection
+
+<script>
+// Malaysian states with cities data (matching WeatherService)
+const malaysianStates = {
+    'Kuala Lumpur': ['Kuala Lumpur'],
+    'Selangor': ['Shah Alam', 'Petaling Jaya', 'Subang Jaya', 'Klang', 'Ampang', 'Cheras', 'Rawang', 'Kajang', 'Bangi', 'Putrajaya', 'Puchong', 'Damansara', 'Sunway'],
+    'Penang': ['George Town', 'Bayan Lepas', 'Bukit Mertajam'],
+    'Johor': ['Johor Bahru', 'Batu Pahat', 'Muar', 'Kulai', 'Skudai', 'Kluang'],
+    'Perak': ['Ipoh', 'Taiping'],
+    'Negeri Sembilan': ['Seremban', 'Port Dickson'],
+    'Kedah': ['Alor Setar', 'Sungai Petani'],
+    'Kelantan': ['Kota Bharu'],
+    'Terengganu': ['Kuala Terengganu'],
+    'Sarawak': ['Kuching', 'Miri', 'Sibu', 'Bintulu'],
+    'Sabah': ['Kota Kinabalu', 'Sandakan', 'Tawau'],
+    'Malacca': ['Malacca'],
+    'Pahang': ['Kuantan'],
+    'Labuan': ['Labuan']
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    const stateSelect = document.getElementById('stateSelect');
+    const citySelect = document.getElementById('citySelect');
+
+    stateSelect.addEventListener('change', function() {
+        const selectedState = this.value;
+        
+        // Clear city dropdown
+        citySelect.innerHTML = '<option value="">Select City</option>';
+        
+        if (selectedState && malaysianStates[selectedState]) {
+            // Enable city dropdown
+            citySelect.disabled = false;
+            
+            // Populate cities for selected state
+            malaysianStates[selectedState].forEach(function(city) {
+                const option = document.createElement('option');
+                option.value = city;
+                option.textContent = city;
+                citySelect.appendChild(option);
+            });
+        } else {
+            // Disable city dropdown if no state selected
+            citySelect.disabled = true;
+            citySelect.innerHTML = '<option value="">Select State First</option>';
+        }
+    });
+});
+</script>

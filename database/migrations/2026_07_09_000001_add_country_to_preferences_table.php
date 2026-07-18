@@ -11,8 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('teas', function (Blueprint $table) {
-            $table->enum('source', ['scraped', 'manual'])->default('manual')->after('image');
+        if (! Schema::hasTable('preferences') || Schema::hasColumn('preferences', 'country')) {
+            return;
+        }
+
+        Schema::table('preferences', function (Blueprint $table) {
+            $table->string('country')->nullable()->after('state');
         });
     }
 
@@ -21,8 +25,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('teas', function (Blueprint $table) {
-            $table->dropColumn('source');
+        Schema::table('preferences', function (Blueprint $table) {
+            $table->dropColumn('country');
         });
     }
 };

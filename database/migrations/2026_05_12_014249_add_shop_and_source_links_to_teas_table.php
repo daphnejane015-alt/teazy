@@ -11,9 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('teas', function (Blueprint $table) {
-            //
-        });
+        if (! Schema::hasTable('teas')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('teas', 'shop_link')) {
+            Schema::table('teas', function (Blueprint $table) {
+                $table->string('shop_link', 500)->nullable()->after('source');
+            });
+        }
     }
 
     /**

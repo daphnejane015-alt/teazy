@@ -343,6 +343,15 @@ class RecommendationService
         }
     }
 
+    public function healthMatchScore(Tea $tea, ?string $healthGoal): float
+    {
+        if (empty($healthGoal)) {
+            return 0.0;
+        }
+
+        return $this->calculateHealthScore($tea->health_benefit ?? '', $healthGoal);
+    }
+
     private function calculateHealthScore($teaBenefit, $userGoal)
     {
         // Get expanded keywords for the health goal

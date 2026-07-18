@@ -66,13 +66,13 @@ class RatingController extends Controller
             $query->with('user')->latest();
         }])
         ->withCount('ratings')
+        ->withAvg('ratings', 'rating')
         ->having('ratings_count', '>', 0)
-        ->get()
-        ->sortByDesc(function($tea) {
-            // Sort by average rating first, then by number of ratings for tie-breaking
-            return [$tea->averageRating(), $tea->ratings_count];
-        })
-        ->take($limit);
+        ->orderByDesc('ratings_count')
+        ->orderByDesc('ratings_avg_rating')
+        ->orderBy('teas.id')
+        ->limit($limit)
+        ->get();
     }
 
     public function topRated()

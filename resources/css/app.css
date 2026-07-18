@@ -141,4 +141,41 @@
     font-size: 0.75rem;
     font-weight: 500;
   }
+
+  .btn-shopee {
+    background: var(--accent-green);
+    color: #fff;
+    border: 1px solid var(--primary-green);
+    border-radius: 9999px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-shopee:hover {
+    background: var(--primary-green);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px var(--shadow-medium);
+  }
+
+  .btn-lazada {
+    background: var(--light-green);
+    color: var(--text-dark);
+    border: 1px solid var(--accent-green);
+    border-radius: 9999px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-lazada:hover {
+    background: var(--pale-green);
+    color: var(--primary-green);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px var(--shadow-light);
+  }
 }

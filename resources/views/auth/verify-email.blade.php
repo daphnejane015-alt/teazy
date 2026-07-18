@@ -13,8 +13,8 @@
     <!-- Info Box -->
     <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
         <p class="text-sm text-green-800">
-            We've sent a verification link to <span class="font-semibold">{{ auth()->user()->email }}</span>. 
-            Please check your inbox and click the link to activate your account.
+            We've sent a verification link to <span class="font-semibold">{{ auth()->user()->email }}</span>.
+            Please check your inbox or spam folder and click the link to activate your account.
         </p>
     </div>
 

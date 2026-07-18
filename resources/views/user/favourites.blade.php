@@ -1,4 +1,4 @@
-@extends('layouts.sidebar')
+﻿@extends('layouts.sidebar')
 
 @section('content')
 <div class="mb-8">
@@ -99,23 +99,20 @@
                     @endif
                     
                     <!-- Action Buttons -->
-                    <div class="grid grid-cols-2 gap-2">
-                        @if($tea->shop_link)
-                            <a href="{{ $tea->shop_link }}" target="_blank" 
-                               class="btn-secondary text-xs py-2 text-center flex items-center justify-center gap-1">
-                                Shop
-                            </a>
-                        @else
-                            <span class="text-xs text-gray-400 py-2 text-center border border-dashed rounded-lg">
-                                No shop link
-                            </span>
-                        @endif
-                        
-                        <button type="button" 
-                                onclick="openTeaDetails({{ $tea->id }}, '{{ addslashes($tea->name) }}', '{{ addslashes($tea->flavor) }}', '{{ addslashes($tea->caffeine_level) }}', '{{ addslashes($tea->health_benefit) }}', '{{ $imgSrc }}')"
-                                class="btn-secondary text-xs py-2 text-center">
-                            👁️ Details
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button"
+                                onclick="openTeaDetails({{ $tea->id }}, '{{ addslashes($tea->name) }}', '{{ addslashes($tea->flavor) }}', '{{ addslashes($tea->caffeine_level) }}', '{{ addslashes($tea->health_benefit) }}', '{{ $imgSrc }}', '{{ $tea->shopee_link ?? '' }}', '{{ $tea->lazada_link ?? '' }}')"
+                                class="btn-secondary text-[10px] sm:text-xs py-2 px-1 text-center">
+                            Details
                         </button>
+                        <a href="{{ $tea->shopeeShopUrl() }}" target="_blank" rel="noopener noreferrer"
+                           class="flex items-center justify-center text-[10px] sm:text-xs py-2 px-1 text-center rounded-full font-semibold transition-all" style="background:#4a7c28;color:#fff;border:1px solid #2d5016;">
+                            Shopee
+                        </a>
+                        <a href="{{ $tea->lazadaShopUrl() }}" target="_blank" rel="noopener noreferrer"
+                           class="flex items-center justify-center text-[10px] sm:text-xs py-2 px-1 text-center rounded-full font-semibold transition-all" style="background:#8fb339;color:#1a1a1a;border:1px solid #4a7c28;">
+                            � Lazada
+                        </a>
                     </div>
                 </div>
             </div>
@@ -148,6 +145,7 @@
             <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-6">
                 <div class="flex items-center gap-2">
                     <span id="modalTeaFlavor" class="flavor-tag"></span>
+                    <span id="modalTeaType" class="hidden flavor-tag"></span>
                 </div>
             </div>
         </div>
@@ -180,6 +178,18 @@
                 </h3>
                 <p id="modalTeaHealth" class="text-green-700 leading-relaxed"></p>
             </div>
+
+            <!-- AI Insight (Gemini) -->
+            <div class="p-5 rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 mb-5">
+                <h3 class="text-lg font-bold text-indigo-800 mb-3 flex items-center gap-2">
+                    <span class="text-xl">✨</span>
+                    Why It Fits You
+                    <span class="ml-auto text-[10px] font-semibold uppercase tracking-wide text-indigo-500 bg-indigo-100 px-2 py-0.5 rounded-full">AI</span>
+                </h3>
+                <p id="modalTeaAi" class="text-indigo-700 leading-relaxed whitespace-pre-line">Loading…</p>
+                <div id="modalTeaAiSources" class="mt-3 flex flex-wrap gap-2"></div>
+            </div>
+
         </div>
     </div>
 </div>
@@ -242,13 +252,62 @@ async function toggleFavourite(teaId, btn) {
 }
 
 // Open tea details modal
-function openTeaDetails(id, name, flavor, caffeine, healthBenefit, image) {
+function openTeaDetails(id, name, flavor, caffeine, healthBenefit, image, shopeeLink, lazadaLink) {
     document.getElementById('modalTeaImage').src = image;
     document.getElementById('modalTeaName').textContent = name;
     document.getElementById('modalTeaFlavor').textContent = flavor;
     document.getElementById('modalTeaFlavor2').textContent = flavor;
     document.getElementById('modalTeaCaffeine').textContent = caffeine;
     document.getElementById('modalTeaHealth').textContent = healthBenefit || 'No health benefit information available.';
+
+
+    // Load Gemini AI description on demand
+    const aiEl = document.getElementById('modalTeaAi');
+    if (aiEl) {
+        aiEl.textContent = 'Generating a friendly summary…';
+        const sourcesEl = document.getElementById('modalTeaAiSources');
+        if (sourcesEl) sourcesEl.replaceChildren();
+        fetch(`/teas/${id}/ai-description`, { headers: { 'Accept': 'application/json' } })
+            .then(async r => {
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.message || 'Could not load the AI summary right now.');
+                return data;
+            })
+            .then(d => {
+                const rawDescription = d.description || 'No AI summary available yet.';
+                let teaType = null;
+                let description = rawDescription;
+                if (rawDescription.startsWith('Tea type:')) {
+                    const nl = rawDescription.indexOf('\n');
+                    const typeLine = nl === -1 ? rawDescription : rawDescription.slice(0, nl);
+                    teaType = typeLine.replace(/^Tea type:\s*/, '').trim();
+                    description = nl === -1 ? '' : rawDescription.slice(nl + 1).trim();
+                    if (!description) description = 'No AI summary available yet.';
+                }
+                const typeEl = document.getElementById('modalTeaType');
+                if (typeEl) {
+                    if (teaType) {
+                        typeEl.textContent = 'Tea type: ' + teaType;
+                        typeEl.classList.remove('hidden');
+                    } else {
+                        typeEl.classList.add('hidden');
+                    }
+                }
+                aiEl.textContent = description;
+                if (sourcesEl && Array.isArray(d.sources)) {
+                    d.sources.forEach(source => {
+                        const link = document.createElement('a');
+                        link.href = source.url;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.className = 'inline-flex max-w-full items-center rounded-full bg-white px-2.5 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-100';
+                        link.textContent = `Source: ${source.title || 'Learn more'}`;
+                        sourcesEl.appendChild(link);
+                    });
+                }
+            })
+            .catch(error => { aiEl.textContent = error.message; });
+    }
 
     document.getElementById('teaDetailsModal').classList.remove('hidden');
     document.getElementById('teaDetailsModal').classList.add('flex');

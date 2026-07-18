@@ -274,10 +274,11 @@
                                         📄 Source
                                     </a>
                                 @endif
-                                @if($tea->shop_link)
-                                    <a href="{{ $tea->shop_link }}" target="_blank" class="text-xs text-green-600 hover:text-green-800 truncate max-w-xs">
-                                        � Shop Link
-                                    </a>
+                                @if($tea->shopee_link)
+                                    <a href="{{ $tea->shopee_link }}" target="_blank" class="text-xs text-orange-600 hover:text-orange-800 truncate max-w-xs">Shopee</a>
+                                @endif
+                                @if($tea->lazada_link)
+                                    <a href="{{ $tea->lazada_link }}" target="_blank" class="text-xs text-blue-600 hover:text-blue-800 truncate max-w-xs">Lazada</a>
                                 @endif
                             </div>
                         </td>
@@ -304,7 +305,7 @@
                                 {{ Str::limit($tea->health_benefit, 60) }}
                             </p>
                         </td>
-                        
+
                         <!-- Timestamps -->
                         <td class="px-4 py-3 whitespace-nowrap">
                             <div class="flex flex-col text-xs">

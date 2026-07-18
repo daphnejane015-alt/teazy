@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -12,7 +13,21 @@ use App\Models\Preference;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, MustVerifyEmailTrait, Notifiable;
+
+    /**
+     * Clean up related records when a user is deleted to avoid orphaned data.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user) {
+            $user->ratings()->delete();
+            $user->favourites()->detach();
+            $user->preference()->delete();
+            $user->recommendations()->delete();
+            $user->telegramChats()->delete();
+        });
+    }
 
     /**
      * The attributes that are mass assignable.

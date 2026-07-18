@@ -33,7 +33,7 @@ class AuthenticatedSessionController extends Controller
                 ->with('success', 'Welcome back to the admin dashboard!');
         }
 
-        return redirect()->route('user.dashboard')
+        return redirect()->intended(RouteServiceProvider::HOME)
             ->with('success', 'Welcome back!');
     }
 

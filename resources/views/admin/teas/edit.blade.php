@@ -55,7 +55,8 @@
 
         <div>
             <label class="block text-sm font-medium text-gray-700">Health Benefit</label>
-            <input type="text" name="health_benefit" value="{{ old('health_benefit', $tea->health_benefit) }}" class="mt-1 block w-full border-gray-300 rounded">
+            <textarea name="health_benefit" rows="4" class="mt-1 block w-full border-gray-300 rounded" maxlength="1000">{{ old('health_benefit', $tea->health_benefit) }}</textarea>
+            <p class="text-xs text-gray-400 mt-1">{{ strlen($tea->health_benefit) }}/1000 characters</p>
             @error('health_benefit')
                 <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
             @enderror
@@ -69,12 +70,28 @@
             @enderror
         </div>
 
-        <div>
-            <label class="block text-sm font-medium text-gray-700">Shop Link</label>
-            <input type="url" name="shop_link" value="{{ old('shop_link', $tea->shop_link) }}" class="mt-1 block w-full border-gray-300 rounded" placeholder="https://shop.example.com/buy-tea">
-            @error('shop_link')
-                <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
-            @enderror
+        <div class="bg-gray-50 rounded-lg p-4 space-y-4">
+            <h4 class="font-semibold text-gray-800 flex items-center gap-2">
+                <span>🛒</span> Shop Links
+            </h4>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Shopee Link</label>
+                <input type="url" name="shopee_link" value="{{ old('shopee_link', $tea->shopee_link) }}" class="mt-1 block w-full border-gray-300 rounded" placeholder="https://shopee.com.my/product-link or leave blank for search">
+                <p class="text-xs text-gray-500 mt-1">Leave blank to use Shopee search by tea name.</p>
+                @error('shopee_link')
+                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Lazada Link</label>
+                <input type="url" name="lazada_link" value="{{ old('lazada_link', $tea->lazada_link) }}" class="mt-1 block w-full border-gray-300 rounded" placeholder="https://lazada.com.my/product-link or leave blank for search">
+                <p class="text-xs text-gray-500 mt-1">Leave blank to use Lazada search by tea name.</p>
+                @error('lazada_link')
+                    <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
+                @enderror
+            </div>
         </div>
 
         <div>

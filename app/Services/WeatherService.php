@@ -14,8 +14,9 @@ class WeatherService
     // API Rate Limiting (Free tier: 1000 calls/day, 60 calls/minute)
     private const DAILY_LIMIT = 1000;
     private const MINUTE_LIMIT = 60;
-    private const CACHE_DURATION_MINUTES = 30; // Cache for 30 minutes
+    private const CACHE_DURATION_MINUTES = 10; // Cache for 10 minutes (reduced for better sync with OpenWeather.org)
     private const SAFETY_BUFFER = 0.8; // Use only 80% of daily limit
+    private const USER_THROTTLE_SECONDS = 60; // Max 1 force refresh per minute per user
 
     public function __construct()
     {
@@ -25,7 +26,7 @@ class WeatherService
     /**
      * Get current weather for a city
      */
-    public function getCurrentWeather($city, $country = null)
+    public function getCurrentWeather($city, $country = null, $forceRefresh = false)
     {
         try {
             // Check rate limits first
@@ -34,21 +35,34 @@ class WeatherService
                 return $this->getCachedWeather($city, $country);
             }
 
-            // Check cache first
+            // Check cache first (unless force refresh is requested)
             $cacheKey = $this->getCacheKey('current', $city, $country);
-            $cached = cache()->get($cacheKey);
-            if ($cached) {
-                Log::info('Using cached weather data for ' . $city);
-                return $cached;
+            if (!$forceRefresh) {
+                $cached = cache()->get($cacheKey);
+                if ($cached) {
+                    Log::info('Using cached weather data for ' . $city);
+                    return $cached;
+                }
+            }
+
+            // If force refresh requested, check user throttle
+            if ($forceRefresh) {
+                $userId = auth()->id();
+                if (!$this->canUserForceRefresh($userId)) {
+                    Log::info('User force refresh throttled, using cached data for ' . $city);
+                    return $this->getCachedWeather($city, $country);
+                }
+                // Record the force refresh
+                $this->recordUserForceRefresh($userId);
             }
 
             // Default to Malaysia if no country specified and city is Malaysian
             if (!$country && $this->isMalaysianCity($city)) {
                 $country = 'MY';
             }
-            
+
             $query = $country ? "{$city},{$country}" : $city;
-            
+
             $response = Http::get("{$this->baseUrl}/weather", [
                 'q' => $query,
                 'appid' => $this->apiKey,
@@ -61,15 +75,15 @@ class WeatherService
             }
 
             $data = $response->json();
-            
+
             // Increment API call counter
             $this->incrementApiCallCount();
-            
+
             $weather = $this->storeWeatherData($data);
-            
+
             // Cache the result
             cache()->put($cacheKey, $weather, now()->addMinutes(self::CACHE_DURATION_MINUTES));
-            
+
             return $weather;
 
         } catch (\Exception $e) {
@@ -202,15 +216,15 @@ class WeatherService
             $avgHumidity = array_sum($dayData['humidity']) / count($dayData['humidity']);
             $avgWindSpeed = array_sum($dayData['wind_speeds']) / count($dayData['wind_speeds']);
             $avgPressure = array_sum($dayData['pressure']) / count($dayData['pressure']);
-            
+
             // Get most common condition
             $conditions = array_count_values($dayData['conditions']);
             $mainCondition = array_keys($conditions, max($conditions))[0];
-            
+
             // Get most common description
             $descriptions = array_count_values($dayData['descriptions']);
             $description = array_keys($descriptions, max($descriptions))[0];
-            
+
             // Get most common icon
             $icons = array_count_values($dayData['icons']);
             $icon = array_keys($icons, max($icons))[0];
@@ -351,13 +365,38 @@ class WeatherService
     public function isMalaysianCity($city)
     {
         $malaysianCities = [
-            'kuala lumpur', 'kl', 'george town', 'penang', 'johor bahru', 'jb',
-            'ipoh', 'shah alam', 'petaling jaya', 'pj', 'seremban', 'kuching',
-            'kota kinabalu', 'kk', 'malacca', 'melaka', 'alor setar', 'miri',
-            'klang', 'kota bharu', 'kuala terengganu', 'sandakan', 'sibu',
-            'taiping', 'seberang perai', 'subang jaya', 'putrajaya', 'cyberjaya',
-            'rawang', 'kajang', 'bangi', 'senawang', 'ampang', 'cheras',
-            'gombak', 'batu pahat', 'kulim', 'banting', 'sepang', 'salak tinggi'
+            // Kuala Lumpur & Selangor
+            'kuala lumpur', 'kl', 'shah alam', 'petaling jaya', 'pj', 'subang jaya',
+            'klang', 'ampang', 'cheras', 'gombak', 'rawang', 'kajang', 'bangi',
+            'senawang', 'sepang', 'putrajaya', 'cyberjaya', 'banting', 'salak tinggi',
+            'puchong', 'damansara', 'kelana jaya', 'sunway', 'serdang',
+            // Penang
+            'george town', 'penang', 'bayan lepas', 'bukit mertajam', 'seberang perai',
+            // Johor
+            'johor bahru', 'jb', 'batu pahat', 'muar', 'kulai', 'skudai', 'pasir gudang',
+            'segamat', 'kluang',
+            // Perak
+            'ipoh', 'taiping', 'kuala kangsar', 'teluk intan', 'sitiawan',
+            // Negeri Sembilan
+            'seremban', 'port dickson', 'nilai',
+            // Kedah
+            'alor setar', 'sungai petani', 'kulim',
+            // Kelantan
+            'kota bharu',
+            // Terengganu
+            'kuala terengganu',
+            // Sarawak
+            'kuching', 'miri', 'sibu', 'bintulu', 'sri aman',
+            // Sabah
+            'kota kinabalu', 'kk', 'sandakan', 'tawau', 'lahad datu',
+            // Malacca
+            'malacca', 'melaka',
+            // Perlis
+            'kangar',
+            // Pahang
+            'kuantan', 'temerloh', 'bentong',
+            // Labuan
+            'labuan'
         ];
 
         return in_array(strtolower(trim($city)), $malaysianCities);
@@ -369,26 +408,139 @@ class WeatherService
     public static function getMalaysianCities()
     {
         return [
+            // Kuala Lumpur & Selangor
             'Kuala Lumpur',
-            'George Town',
-            'Johor Bahru', 
-            'Ipoh',
             'Shah Alam',
             'Petaling Jaya',
-            'Seremban',
-            'Kuching',
-            'Kota Kinabalu',
-            'Malacca',
-            'Alor Setar',
-            'Miri',
-            'Klang',
-            'Kota Bharu',
-            'Kuala Terengganu',
-            'Sandakan',
-            'Sibu',
-            'Taiping',
             'Subang Jaya',
-            'Putrajaya'
+            'Klang',
+            'Ampang',
+            'Cheras',
+            'Rawang',
+            'Kajang',
+            'Bangi',
+            'Putrajaya',
+            'Puchong',
+            'Damansara',
+            'Sunway',
+            // Penang
+            'George Town, Penang',
+            'Bayan Lepas, Penang',
+            'Bukit Mertajam, Penang',
+            // Johor
+            'Johor Bahru',
+            'Batu Pahat, Johor',
+            'Muar, Johor',
+            'Kulai, Johor',
+            'Skudai, Johor',
+            'Kluang, Johor',
+            // Perak
+            'Ipoh',
+            'Taiping',
+            // Negeri Sembilan
+            'Seremban',
+            'Port Dickson, Negeri Sembilan',
+            // Kedah
+            'Alor Setar',
+            'Sungai Petani, Kedah',
+            // Kelantan
+            'Kota Bharu',
+            // Terengganu
+            'Kuala Terengganu',
+            // Sarawak
+            'Kuching',
+            'Miri',
+            'Sibu',
+            'Bintulu',
+            // Sabah
+            'Kota Kinabalu',
+            'Sandakan',
+            'Tawau',
+            // Malacca
+            'Malacca',
+            // Pahang
+            'Kuantan',
+            // Labuan
+            'Labuan'
+        ];
+    }
+
+    /**
+     * Get Malaysian states with their cities (for cascading dropdowns)
+     * Cities are formatted for OpenWeather API compatibility
+     */
+    public static function getMalaysianStates()
+    {
+        return [
+            'Kuala Lumpur' => [
+                'Kuala Lumpur'
+            ],
+            'Selangor' => [
+                'Shah Alam',
+                'Petaling Jaya',
+                'Subang Jaya',
+                'Klang',
+                'Ampang',
+                'Cheras',
+                'Rawang',
+                'Kajang',
+                'Bangi',
+                'Putrajaya',
+                'Puchong',
+                'Damansara',
+                'Sunway'
+            ],
+            'Penang' => [
+                'George Town',
+                'Bayan Lepas',
+                'Bukit Mertajam'
+            ],
+            'Johor' => [
+                'Johor Bahru',
+                'Batu Pahat',
+                'Muar',
+                'Kulai',
+                'Skudai',
+                'Kluang'
+            ],
+            'Perak' => [
+                'Ipoh',
+                'Taiping'
+            ],
+            'Negeri Sembilan' => [
+                'Seremban',
+                'Port Dickson'
+            ],
+            'Kedah' => [
+                'Alor Setar',
+                'Sungai Petani'
+            ],
+            'Kelantan' => [
+                'Kota Bharu'
+            ],
+            'Terengganu' => [
+                'Kuala Terengganu'
+            ],
+            'Sarawak' => [
+                'Kuching',
+                'Miri',
+                'Sibu',
+                'Bintulu'
+            ],
+            'Sabah' => [
+                'Kota Kinabalu',
+                'Sandakan',
+                'Tawau'
+            ],
+            'Malacca' => [
+                'Malacca'
+            ],
+            'Pahang' => [
+                'Kuantan'
+            ],
+            'Labuan' => [
+                'Labuan'
+            ]
         ];
     }
 
@@ -510,12 +662,12 @@ class WeatherService
     {
         $dailyKey = 'openweather_daily_calls_' . date('Y-m-d');
         $minuteKey = 'openweather_minute_calls_' . date('Y-m-d-H:i');
-        
+
         $dailyCalls = cache()->get($dailyKey, 0);
         $minuteCalls = cache()->get($minuteKey, 0);
-        
+
         $dailyLimit = self::DAILY_LIMIT * self::SAFETY_BUFFER;
-        
+
         // Check if we're approaching the January 31 deadline
         $daysUntilJan31 = now()->diffInDays(\Carbon\Carbon::createFromFormat('Y-m-d', '2026-01-31'));
         if ($daysUntilJan31 <= 3) {
@@ -523,18 +675,51 @@ class WeatherService
             $dailyLimit = self::DAILY_LIMIT * 0.5; // Use only 50% of limit
             Log::warning("Approaching Jan 31 deadline - using conservative API limit: {$dailyLimit} calls/day");
         }
-        
+
         if ($dailyCalls >= $dailyLimit) {
             Log::error("Daily API limit reached: {$dailyCalls}/{$dailyLimit}");
             return false;
         }
-        
+
         if ($minuteCalls >= self::MINUTE_LIMIT) {
             Log::warning("Minute API limit reached: {$minuteCalls}/" . self::MINUTE_LIMIT);
             return false;
         }
-        
+
         return true;
+    }
+
+    /**
+     * Check if user can force refresh based on session throttle
+     */
+    private function canUserForceRefresh($userId)
+    {
+        if (!$userId) {
+            return false;
+        }
+
+        $throttleKey = "weather_force_refresh_{$userId}";
+        $lastRefresh = session()->get($throttleKey);
+
+        if (!$lastRefresh) {
+            return true; // First refresh allowed
+        }
+
+        $secondsSinceLastRefresh = now()->diffInSeconds($lastRefresh);
+        return $secondsSinceLastRefresh >= self::USER_THROTTLE_SECONDS;
+    }
+
+    /**
+     * Record user force refresh for throttling
+     */
+    private function recordUserForceRefresh($userId)
+    {
+        if (!$userId) {
+            return;
+        }
+
+        $throttleKey = "weather_force_refresh_{$userId}";
+        session()->put($throttleKey, now());
     }
 
     /**

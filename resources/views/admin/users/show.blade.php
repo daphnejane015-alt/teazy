@@ -2,24 +2,26 @@
 
 @section('content')
 <div class="mb-6">
-    <div class="flex items-center justify-between">
-        <div class="flex items-center">
-            <a href="{{ route('admin.users.index') }}" class="text-gray-600 hover:text-gray-900 mr-4">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex items-center flex-wrap gap-2">
+            <a href="{{ route('admin.users.index') }}" class="text-gray-600 hover:text-gray-900">
                 ← Back to Users
             </a>
-            <h1 class="text-3xl font-bold">User Details</h1>
+            <h1 class="text-2xl lg:text-3xl font-bold w-full lg:w-auto">User Details</h1>
         </div>
-        <div class="space-x-4">
-            <a href="{{ route('admin.users.edit', $user->id) }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-                ✏️ Edit User
+        <div class="flex flex-wrap items-center justify-start gap-2 lg:justify-end lg:gap-4">
+            <a href="{{ route('admin.users.edit', $user->id) }}" class="inline-flex items-center justify-center bg-blue-600 text-white px-3 lg:px-4 py-1.5 lg:py-2 text-sm lg:text-base rounded hover:bg-blue-700">
+                <span class="lg:hidden">✏️ Edit</span>
+                <span class="hidden lg:inline">✏️ Edit User</span>
             </a>
             @if($user->id !== auth()->guard('admin')->id())
                 <form action="{{ route('admin.users.destroy', $user->id) }}" method="POST" class="inline">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                    <button type="submit" class="inline-flex items-center justify-center bg-red-600 text-white px-3 lg:px-4 py-1.5 lg:py-2 text-sm lg:text-base rounded hover:bg-red-700"
                             onclick="return confirm('Are you sure you want to delete this user? All their ratings and preferences will also be deleted.')">
-                        🗑️ Delete User
+                        <span class="lg:hidden">🗑️ Delete</span>
+                        <span class="hidden lg:inline">🗑️ Delete User</span>
                     </button>
                 </form>
             @endif
@@ -103,7 +105,7 @@
         <!-- Statistics -->
         <div class="bg-white rounded-lg shadow p-6 mb-6">
             <h3 class="text-lg font-semibold mb-4">Activity Statistics</h3>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="text-center">
                     <div class="text-2xl font-bold text-blue-600">{{ $user->ratings()->count() }}</div>
                     <div class="text-sm text-gray-500">Total Ratings</div>
@@ -113,10 +115,6 @@
                         {{ $user->ratings()->avg('rating') ? number_format($user->ratings()->avg('rating'), 1) : '0.0' }}
                     </div>
                     <div class="text-sm text-gray-500">Avg Rating</div>
-                </div>
-                <div class="text-center">
-                    <div class="text-2xl font-bold text-purple-600">{{ $user->recommendations()->count() }}</div>
-                    <div class="text-sm text-gray-500">Recommendations</div>
                 </div>
                 <div class="text-center">
                     <div class="text-2xl font-bold text-orange-600">
@@ -142,8 +140,8 @@
                         <div class="border-b pb-4 last:border-b-0">
                             <div class="flex justify-between items-start">
                                 <div class="flex-1">
-                                    <div class="font-medium">{{ $rating->tea->name }}</div>
-                                    <div class="text-sm text-gray-500">{{ $rating->tea->flavor }} • {{ $rating->tea->caffeine_level }}</div>
+                                    <div class="font-medium">{{ optional($rating->tea)->name ?? 'Deleted tea' }}</div>
+                                    <div class="text-sm text-gray-500">{{ optional($rating->tea)->flavor ?? 'Unknown' }} • {{ optional($rating->tea)->caffeine_level ?? 'N/A' }}</div>
                                     @if($rating->side_note)
                                         <div class="mt-2 text-sm text-gray-600">
                                             <span class="font-medium">Note:</span> {{ $rating->side_note }}

@@ -24,7 +24,9 @@ class TelegramBotService
     private const STEP_HEALTH_GOAL = 'health_goal';
     private const STEP_POST_RECOMMENDATION = 'post_recommendation';
     private const STEP_AWAITING_RATING = 'awaiting_rating';
-    private const STEP_WEATHER = 'weather';
+    private const STEP_STATE = 'state';
+    private const STEP_CITY = 'city';
+    private const STEP_WEATHER_PREF = 'weather_pref';
 
     // Synced with the website Find Tea form (resources/views/user/find-tea.blade.php)
     private const FLAVOR_OPTIONS = [
@@ -58,7 +60,34 @@ class TelegramBotService
     private const ACTION_NEW = '🔄 New Recommendation';
 
     private const WEATHER_SKIP = '🚫 Skip weather';
-    private const WEATHER_CITY_OPTIONS = ['Kuala Lumpur', 'Penang', 'Johor Bahru', 'Ipoh', 'Kota Kinabalu'];
+
+    private const MALAYSIAN_STATES = [
+        'Kuala Lumpur'     => ['Kuala Lumpur'],
+        'Selangor'         => ['Shah Alam', 'Petaling Jaya', 'Subang Jaya', 'Klang', 'Kajang', 'Puchong', 'Damansara', 'Rawang', 'Ampang', 'Cheras', 'Bangi', 'Putrajaya', 'Sunway'],
+        'Penang'           => ['George Town', 'Bayan Lepas', 'Bukit Mertajam'],
+        'Johor'            => ['Johor Bahru', 'Batu Pahat', 'Muar', 'Kulai', 'Skudai', 'Kluang'],
+        'Perak'            => ['Ipoh', 'Taiping'],
+        'Negeri Sembilan'  => ['Seremban', 'Port Dickson'],
+        'Kedah'            => ['Alor Setar', 'Sungai Petani'],
+        'Kelantan'         => ['Kota Bharu'],
+        'Terengganu'       => ['Kuala Terengganu'],
+        'Sarawak'          => ['Kuching', 'Miri', 'Sibu', 'Bintulu'],
+        'Sabah'            => ['Kota Kinabalu', 'Sandakan', 'Tawau'],
+        'Malacca'          => ['Malacca'],
+        'Pahang'           => ['Kuantan'],
+        'Labuan'           => ['Labuan'],
+    ];
+
+    private const WEATHER_PREFS = [
+        'Auto (current weather)'    => 'auto',
+        'Hot & Humid (28-35°C)'     => 'malaysian_hot_humid',
+        'Rainy / Monsoon'           => 'malaysian_rainy',
+        'Haze Season'               => 'malaysian_haze',
+        'Cool Morning (18-22°C)'    => 'malaysian_cool_morning',
+        'Afternoon Heat (32-38°C)'  => 'malaysian_afternoon_heat',
+        'Thunderstorm'              => 'malaysian_thunderstorm',
+        'Air-Cond Indoors'          => 'malaysian_aircond',
+    ];
 
     private RecommendationService $recommendationService;
 
@@ -86,21 +115,28 @@ class TelegramBotService
             $chat = $this->findOrCreateChat($chatId, $chatInfo);
 
             if (Str::startsWith($text, '/')) {
-                $this->handleCommand($chatId, $text, $chatInfo, $chat);
+                try {
+                    $this->handleCommand($chatId, $text, $chatInfo, $chat);
+                } catch (\Throwable $e) {
+                    Log::error('Telegram handleCommand error', ['cmd' => $text, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                    $this->sendMessage($chatId, "⚠️ That didn't work as expected. Please try again or use /start to return to the menu.");
+                }
                 return;
             }
 
-            $this->handleMessage($chatId, $text, $chat);
-        } catch (\Throwable $e) {
-            Log::error('Telegram bot error', [
-                'update' => $update,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            if (isset($chatId) && !empty($chatId)) {
-                $this->sendMessage($chatId, 'Sorry, something went wrong. Please try again later.');
+            try {
+                $this->handleMessage($chatId, $text, $chat);
+            } catch (\Throwable $e) {
+                Log::error('Telegram handleMessage error', ['text' => $text, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                $this->sendMessage($chatId, "⚠️ Something didn't go through. Tap /start to reset and try again.", $this->buildKeyboard(['/start', '/recommend']));
             }
+        } catch (\Throwable $e) {
+            Log::error('Telegram bot unhandled error', [
+                'update' => $update,
+                'error'  => $e->getMessage(),
+                'trace'  => $e->getTraceAsString(),
+            ]);
+            // Silent — individual handlers send their own contextual error messages
         }
     }
 
@@ -121,14 +157,26 @@ class TelegramBotService
 
         if (!$chat) {
             $chat = TelegramChat::create([
-                'chat_id' => $chatId,
-                'username' => $info['username'] ?? null,
+                'chat_id'    => $chatId,
+                'username'   => $info['username'] ?? null,
                 'first_name' => $info['first_name'] ?? null,
-                'last_name' => $info['last_name'] ?? null,
+                'last_name'  => $info['last_name'] ?? null,
             ]);
+
+            // Auto-link: try to match by Telegram username if user has one
+            if (!empty($info['username'])) {
+                $user = User::where('username', $info['username'])->first();
+                if ($user) {
+                    $chat->update(['user_id' => $user->id, 'linked_at' => now()]);
+                    TelegramConversation::updateOrCreate(
+                        ['chat_id' => $chatId],
+                        ['user_id' => $user->id, 'step' => self::STEP_IDLE]
+                    );
+                }
+            }
         }
 
-        return $chat;
+        return $chat->fresh();
     }
 
     private function getConversation(string $chatId, ?int $userId = null): TelegramConversation
@@ -159,8 +207,8 @@ class TelegramBotService
 
     private function handleCommand(string $chatId, string $text, array $info, TelegramChat $chat): void
     {
-        $parts = explode(' ', $text, 2);
-        $command = strtolower($this->normalizeCommand($parts[0]));
+        $parts    = explode(' ', $text, 2);
+        $command  = strtolower($this->normalizeCommand($parts[0]));
         $argument = $parts[1] ?? '';
 
         switch ($command) {
@@ -197,29 +245,45 @@ class TelegramBotService
             default:
                 $this->sendMessage(
                     $chatId,
-                    "I don't recognize that command. Try /start, /recommend, /favorites, or /toptea."
+                    "I don't recognise that command. Here's what I can do:"
+                    . "\n/recommend — Get a tea recommendation"
+                    . "\n/toptea — Top-rated teas"
+                    . "\n/favorites — Your saved favourites"
+                    . "\n/rate — Rate the last recommended tea"
+                    . "\n/link — Link your website account"
+                    . "\n/start — Show full menu"
                 );
         }
     }
 
     private function sendWelcome(string $chatId, TelegramChat $chat): void
     {
-        $name = $chat->first_name ?: 'there';
-        $linked = $chat->user_id ? true : false;
+        $name   = $chat->first_name ?: 'there';
+        $linked = (bool) $chat->user_id;
 
-        $text = "Hello, {$name}! I'm your Tea Recommendation Assistant.";
-        $text .= "\n\nI can help you discover the perfect tea based on your taste, caffeine preference, and health goals.";
+        $text  = "👋 Hello, {$name}! I'm *Teazy* — your Malaysian Tea Recommendation Bot.";
+        $text .= "\n\n*What I can do:*";
+        $text .= "\n/recommend — Get a personalised tea recommendation";
+        $text .= "\n/toptea — See the top-rated teas";
+        $text .= "\n/favorites — View your saved favourite teas";
+        $text .= "\n/rate — Rate the last recommended tea";
+        $text .= "\n/link — Link your Teazy website account";
+        $text .= "\n/start — Show this menu again";
 
         if ($linked) {
-            $text .= "\n\nYour account is linked. You can use /favorites to see saved teas.";
+            $user  = User::find($chat->user_id);
+            $email = $user ? $user->email : 'your account';
+            $text .= "\n\n✅ Account linked as *{$email}*. All your favourites and ratings sync with the website.";
         } else {
-            $text .= "\n\nTo view your saved favourites from the website, link your account with:\n`/link your@email.com`";
+            $text .= "\n\n⚠️ Your account is *not linked* yet.";
+            $text .= "\nLink it to sync favourites & ratings:\n`/link your@email.com`";
         }
 
-        $text .= "\n\nLet's get started! Use /recommend to find your tea.";
-        $text .= "\nAfter a recommendation you can add it to favourites or rate it (1-5 stars).";
+        $text .= "\n\nTap /recommend to get started! 🍵";
 
-        $this->sendMessage($chatId, $text);
+        $this->sendMessage($chatId, $text,
+            $this->buildKeyboard(['/recommend', '/toptea', '/favorites'])
+        );
     }
 
     private function startRecommendation(string $chatId): void
@@ -258,8 +322,16 @@ class TelegramBotService
                 $this->processHealthGoal($chatId, $text, $conversation, $chat);
                 break;
 
-            case self::STEP_WEATHER:
-                $this->processWeather($chatId, $text, $conversation, $chat);
+            case self::STEP_STATE:
+                $this->processState($chatId, $text, $conversation, $chat);
+                break;
+
+            case self::STEP_CITY:
+                $this->processCity($chatId, $text, $conversation, $chat);
+                break;
+
+            case self::STEP_WEATHER_PREF:
+                $this->processWeatherPref($chatId, $text, $conversation, $chat);
                 break;
 
             case self::STEP_POST_RECOMMENDATION:
@@ -278,7 +350,8 @@ class TelegramBotService
             default:
                 $this->sendMessage(
                     $chatId,
-                    "I'm not sure what you mean. Type /recommend to find a tea, or /start to see options."
+                    "Not sure what to do? Here's what I can help with:",
+                    $this->buildKeyboard(['/recommend', '/toptea', '/favorites'])
                 );
         }
     }
@@ -296,16 +369,22 @@ class TelegramBotService
             return;
         }
 
-        $conversation->update([
-            'step' => self::STEP_CAFFEINE,
-            'flavor' => $flavor,
-        ]);
+        try {
+            $conversation->update([
+                'step'   => self::STEP_CAFFEINE,
+                'flavor' => $flavor,
+            ]);
 
-        $this->sendMessage(
-            $chatId,
-            "What caffeine level do you prefer?",
-            $this->buildKeyboard(array_keys(self::CAFFEINE_OPTIONS))
-        );
+            $this->sendMessage(
+                $chatId,
+                "What caffeine level do you prefer?",
+                $this->buildKeyboard(array_keys(self::CAFFEINE_OPTIONS))
+            );
+        } catch (\Throwable $e) {
+            Log::error('Telegram processFlavor error', ['error' => $e->getMessage()]);
+            $this->sendMessage($chatId, "Please choose your flavor preference:",
+                $this->buildKeyboard(array_keys(self::FLAVOR_OPTIONS)));
+        }
     }
 
     private function processCaffeine(string $chatId, string $text, TelegramConversation $conversation): void
@@ -315,22 +394,28 @@ class TelegramBotService
         if (!$caffeine) {
             $this->sendMessage(
                 $chatId,
-                "Please choose Low, Medium, or High.",
+                "Please choose one of the caffeine options:",
                 $this->buildKeyboard(array_keys(self::CAFFEINE_OPTIONS))
             );
             return;
         }
 
-        $conversation->update([
-            'step' => self::STEP_HEALTH_GOAL,
-            'caffeine' => $caffeine,
-        ]);
+        try {
+            $conversation->update([
+                'step'     => self::STEP_HEALTH_GOAL,
+                'caffeine' => $caffeine,
+            ]);
 
-        $this->sendMessage(
-            $chatId,
-            "What is your health goal?",
-            $this->buildKeyboard(array_keys(self::HEALTH_OPTIONS))
-        );
+            $this->sendMessage(
+                $chatId,
+                "What is your health goal?",
+                $this->buildKeyboard(array_keys(self::HEALTH_OPTIONS))
+            );
+        } catch (\Throwable $e) {
+            Log::error('Telegram processCaffeine error', ['error' => $e->getMessage()]);
+            $this->sendMessage($chatId, "Please choose your caffeine level:",
+                $this->buildKeyboard(array_keys(self::CAFFEINE_OPTIONS)));
+        }
     }
 
     private function processHealthGoal(string $chatId, string $text, TelegramConversation $conversation, TelegramChat $chat): void
@@ -346,53 +431,158 @@ class TelegramBotService
             return;
         }
 
-        $conversation->update([
-            'step' => self::STEP_WEATHER,
-            'health_goal' => $healthGoal,
-        ]);
+        try {
+            $conversation->update([
+                'step'        => self::STEP_STATE,
+                'health_goal' => $healthGoal,
+            ]);
 
-        $this->askForWeather($chatId);
+            $this->askForState($chatId);
+        } catch (\Throwable $e) {
+            Log::error('Telegram processHealthGoal error', ['error' => $e->getMessage()]);
+            $this->sendMessage($chatId, "Please choose your health goal:",
+                $this->buildKeyboard(array_keys(self::HEALTH_OPTIONS)));
+        }
     }
 
-    private function askForWeather(string $chatId): void
+    private function askForState(string $chatId): void
     {
-        $options = array_merge(self::WEATHER_CITY_OPTIONS, [self::WEATHER_SKIP]);
-
+        $states = array_keys(self::MALAYSIAN_STATES);
+        // 2 per row to keep the keyboard compact and avoid Telegram payload limits
         $this->sendMessage(
             $chatId,
-            "Last step! Want weather-based recommendations?\n\nSend your city (or pick one below), or tap \"" . self::WEATHER_SKIP . "\" to use only your taste preferences.",
-            $this->buildKeyboard($options)
+            "Want weather-based recommendations? 🌤️\n\nChoose your *state* in Malaysia, or tap \"" . self::WEATHER_SKIP . "\" to skip.",
+            $this->buildKeyboard(array_merge($states, [self::WEATHER_SKIP]), 2)
         );
     }
 
-    private function processWeather(string $chatId, string $text, TelegramConversation $conversation, TelegramChat $chat): void
+    private function processState(string $chatId, string $text, TelegramConversation $conversation, TelegramChat $chat): void
     {
         $normalized = strtolower(trim($text));
-        $context = $conversation->context ?? [];
+        $context    = $conversation->context ?? [];
 
         if ($text === self::WEATHER_SKIP || Str::contains($normalized, ['skip', 'no weather', 'none'])) {
             $context['weather'] = false;
-            $context['city'] = null;
+            $context['city']    = null;
             $conversation->update(['context' => $context]);
             $this->generateRecommendations($chatId, $conversation, $chat);
             return;
         }
 
-        $city = trim($text);
-
-        // Fetch & store live weather so the scoring engine can read it via Weather::forCity()
-        try {
-            app(WeatherService::class)->getCurrentWeather($city);
-        } catch (\Throwable $e) {
-            Log::warning('Telegram weather fetch failed', [
-                'city' => $city,
-                'error' => $e->getMessage(),
-            ]);
+        // Match state
+        $matchedState = null;
+        foreach (array_keys(self::MALAYSIAN_STATES) as $state) {
+            if (strtolower($state) === $normalized) {
+                $matchedState = $state;
+                break;
+            }
         }
 
-        $context['weather'] = true;
-        $context['city'] = $city;
+        if (!$matchedState) {
+            $this->sendMessage(
+                $chatId,
+                "Please choose a state from the list.",
+                $this->buildKeyboard(array_merge(array_keys(self::MALAYSIAN_STATES), [self::WEATHER_SKIP]), 2)
+            );
+            return;
+        }
+
+        try {
+            $context['state'] = $matchedState;
+            $conversation->update(['step' => self::STEP_CITY, 'context' => $context]);
+
+            $cities = array_merge(self::MALAYSIAN_STATES[$matchedState], [self::WEATHER_SKIP]);
+            $this->sendMessage(
+                $chatId,
+                "Great! Now choose your *city* in {$matchedState}:",
+                $this->buildKeyboard($cities, 2)
+            );
+        } catch (\Throwable $e) {
+            Log::error('Telegram processState error', ['error' => $e->getMessage()]);
+            $this->askForState($chatId);
+        }
+    }
+
+    private function processCity(string $chatId, string $text, TelegramConversation $conversation, TelegramChat $chat): void
+    {
+        $normalized = strtolower(trim($text));
+        $context    = $conversation->context ?? [];
+
+        if ($text === self::WEATHER_SKIP || Str::contains($normalized, ['skip'])) {
+            $context['weather'] = false;
+            $context['city']    = null;
+            $conversation->update(['context' => $context]);
+            $this->generateRecommendations($chatId, $conversation, $chat);
+            return;
+        }
+
+        $state  = $context['state'] ?? null;
+        $cities = $state ? (self::MALAYSIAN_STATES[$state] ?? []) : [];
+
+        $matchedCity = null;
+        foreach ($cities as $city) {
+            if (strtolower($city) === $normalized) {
+                $matchedCity = $city;
+                break;
+            }
+        }
+
+        if (!$matchedCity) {
+            $this->sendMessage(
+                $chatId,
+                "Please choose a city from the list.",
+                $this->buildKeyboard(array_merge($cities, [self::WEATHER_SKIP]), 2)
+            );
+            return;
+        }
+
+        try {
+            $context['city']    = $matchedCity;
+            $context['weather'] = true;
+            $conversation->update(['step' => self::STEP_WEATHER_PREF, 'context' => $context]);
+
+            $this->askForWeatherPref($chatId);
+        } catch (\Throwable $e) {
+            Log::error('Telegram processCity error', ['error' => $e->getMessage()]);
+            $this->sendMessage($chatId, "Please choose your city:",
+                $this->buildKeyboard(array_merge($cities, [self::WEATHER_SKIP]), 2));
+        }
+    }
+
+    private function askForWeatherPref(string $chatId): void
+    {
+        $this->sendMessage(
+            $chatId,
+            "Last step! Choose your *weather preference* or let the bot use current weather automatically:",
+            $this->buildKeyboard(array_keys(self::WEATHER_PREFS))
+        );
+    }
+
+    private function processWeatherPref(string $chatId, string $text, TelegramConversation $conversation, TelegramChat $chat): void
+    {
+        $pref    = $this->matchOption($text, self::WEATHER_PREFS);
+        $context = $conversation->context ?? [];
+
+        if (!$pref) {
+            $this->sendMessage(
+                $chatId,
+                "Please choose a weather preference from the list.",
+                $this->buildKeyboard(array_keys(self::WEATHER_PREFS))
+            );
+            return;
+        }
+
+        $context['weather_pref'] = $pref;
         $conversation->update(['context' => $context]);
+
+        $city = $context['city'] ?? null;
+        if ($city) {
+            try {
+                app(WeatherService::class)->getCurrentWeather($city, 'MY', false);
+            } catch (\Throwable $e) {
+                Log::warning('Telegram weather fetch failed', ['city' => $city, 'error' => $e->getMessage()]);
+            }
+        }
 
         $this->generateRecommendations($chatId, $conversation, $chat);
     }
@@ -454,16 +644,16 @@ class TelegramBotService
 
     private function buildUserForRecommendation(TelegramConversation $conversation, TelegramChat $chat): User
     {
-        $context = $conversation->context ?? [];
+        $context        = $conversation->context ?? [];
         $weatherEnabled = !empty($context['weather']) && !empty($context['city']);
 
         $attributes = [
-            'preferred_flavor' => $conversation->flavor,
-            'preferred_caffeine' => $conversation->caffeine,
-            'health_goal' => $conversation->health_goal,
+            'preferred_flavor'              => $conversation->flavor,
+            'preferred_caffeine'            => $conversation->caffeine,
+            'health_goal'                   => $conversation->health_goal,
             'weather_based_recommendations' => $weatherEnabled,
-            'city' => $weatherEnabled ? $context['city'] : null,
-            'weather_preference' => 'auto',
+            'city'                          => $weatherEnabled ? $context['city'] : null,
+            'weather_preference'            => $context['weather_pref'] ?? 'auto',
         ];
 
         if ($chat->user_id) {
@@ -490,22 +680,23 @@ class TelegramBotService
 
     private function sendRecommendation(string $chatId, array $recommendation, TelegramConversation $conversation, TelegramChat $chat): void
     {
-        $tea = $recommendation['tea'];
+        $tea  = $recommendation['tea'];
         $text = $this->buildRecommendationText($recommendation, $conversation);
 
         if ($tea->image && $this->looksLikeUrl($tea->image)) {
             $this->sendPhoto($chatId, $tea->image, $text);
         } else {
-            if ($tea->image) {
-                $text .= "\n\n[Tea image]({$tea->image})";
-            }
-
             $this->sendMessage($chatId, $text);
         }
 
-        $prompt = $chat->user_id
-            ? "What would you like to do next?"
-            : "What would you like to do next?\n\n_Tip: link your account with_ `/link your@email.com` _to save favourites and ratings._";
+        if ($chat->user_id) {
+            $prompt = "What would you like to do next?";
+        } else {
+            $prompt = "What would you like to do next?"
+                . "\n\n🔗 *Tip:* Link your Teazy account to save favourites & ratings:"
+                . "\n`/link your@email.com`"
+                . "\n\nYou can still get a new recommendation without linking.";
+        }
 
         $this->sendMessage(
             $chatId,
@@ -535,7 +726,7 @@ class TelegramBotService
 
         $this->sendMessage(
             $chatId,
-            "Please choose an option below.",
+            "Please tap one of the buttons below to continue.",
             $this->buildKeyboard([self::ACTION_FAVOURITE, self::ACTION_RATE, self::ACTION_NEW])
         );
     }
@@ -550,10 +741,16 @@ class TelegramBotService
 
     private function addFavourite(string $chatId, TelegramConversation $conversation, TelegramChat $chat): void
     {
+        // Guards first — no try/catch needed, these are safe reads
         if (!$chat->user_id) {
+            $context = $conversation->context ?? [];
+            $context['pending_action'] = 'favourite';
+            $conversation->update(['step' => self::STEP_AWAITING_EMAIL, 'context' => $context]);
             $this->sendMessage(
                 $chatId,
-                "To save favourites, link your account first:\n`/link your@email.com`"
+                "❤️ To save this tea as a favourite, I need to link your Teazy account first."
+                . "\n\nPlease send me the *email address* you use on the Teazy website:"
+                . "\n_(Or tap /start to cancel)_"
             );
             return;
         }
@@ -561,7 +758,11 @@ class TelegramBotService
         $tea = $this->getLastRecommendedTea($conversation);
 
         if (!$tea) {
-            $this->sendMessage($chatId, "I don't have a tea to save yet. Use /recommend first.");
+            $this->sendMessage(
+                $chatId,
+                "Hmm, I don't have a tea to save yet. Use /recommend to get a suggestion first!",
+                $this->buildKeyboard(['/recommend'])
+            );
             return;
         }
 
@@ -572,30 +773,41 @@ class TelegramBotService
         if ($alreadySaved) {
             $this->sendMessage(
                 $chatId,
-                "*{$tea->name}* is already in your favourites.",
+                "✅ *{$tea->name}* is already in your favourites! View them with /favorites.",
                 $this->buildKeyboard([self::ACTION_RATE, self::ACTION_NEW])
             );
             return;
         }
 
-        Favourite::create([
-            'user_id' => $chat->user_id,
-            'tea_id' => $tea->id,
-        ]);
+        // Only wrap the DB write + success message
+        try {
+            Favourite::create([
+                'user_id' => $chat->user_id,
+                'tea_id'  => $tea->id,
+            ]);
 
-        $this->sendMessage(
-            $chatId,
-            "Added *{$tea->name}* to your favourites! View them anytime with /favorites.",
-            $this->buildKeyboard([self::ACTION_RATE, self::ACTION_NEW])
-        );
+            $this->sendMessage(
+                $chatId,
+                "❤️ Added *{$tea->name}* to your favourites!\nView all your favourites anytime with /favorites.",
+                $this->buildKeyboard([self::ACTION_RATE, self::ACTION_NEW])
+            );
+        } catch (\Throwable $e) {
+            Log::error('Telegram addFavourite error', ['error' => $e->getMessage()]);
+            $this->sendMessage($chatId, "❤️ Couldn't save that favourite right now. Please try again.", $this->buildKeyboard([self::ACTION_FAVOURITE, self::ACTION_NEW]));
+        }
     }
 
     private function askForRating(string $chatId, TelegramConversation $conversation, TelegramChat $chat): void
     {
         if (!$chat->user_id) {
+            $context = $conversation->context ?? [];
+            $context['pending_action'] = 'rate';
+            $conversation->update(['step' => self::STEP_AWAITING_EMAIL, 'context' => $context]);
             $this->sendMessage(
                 $chatId,
-                "To rate teas, link your account first:\n`/link your@email.com`"
+                "⭐ To rate this tea, I need to link your Teazy account first."
+                . "\n\nPlease send me the *email address* you use on the Teazy website:"
+                . "\n_(Or tap /start to cancel)_"
             );
             return;
         }
@@ -603,7 +815,11 @@ class TelegramBotService
         $tea = $this->getLastRecommendedTea($conversation);
 
         if (!$tea) {
-            $this->sendMessage($chatId, "I don't have a tea to rate yet. Use /recommend first.");
+            $this->sendMessage(
+                $chatId,
+                "Hmm, I don't have a tea to rate yet. Use /recommend to get a suggestion first!",
+                $this->buildKeyboard(['/recommend'])
+            );
             return;
         }
 
@@ -611,8 +827,8 @@ class TelegramBotService
 
         $this->sendMessage(
             $chatId,
-            "How would you rate *{$tea->name}*? Choose 1 to 5 stars.",
-            $this->buildKeyboard(['1', '2', '3', '4', '5'])
+            "⭐ How would you rate *{$tea->name}*?\nTap a number from 1 (poor) to 5 (excellent):",
+            $this->buildKeyboard(['1 ⭐', '2 ⭐⭐', '3 ⭐⭐⭐', '4 ⭐⭐⭐⭐', '5 ⭐⭐⭐⭐⭐'])
         );
     }
 
@@ -623,78 +839,85 @@ class TelegramBotService
         if ($rating < 1 || $rating > 5) {
             $this->sendMessage(
                 $chatId,
-                "Please choose a rating from 1 to 5.",
-                $this->buildKeyboard(['1', '2', '3', '4', '5'])
+                "Please tap one of the star buttons to give your rating:",
+                $this->buildKeyboard(['1 ⭐', '2 ⭐⭐', '3 ⭐⭐⭐', '4 ⭐⭐⭐⭐', '5 ⭐⭐⭐⭐⭐'])
             );
-            return;
-        }
-
-        if (!$chat->user_id) {
-            $this->sendMessage(
-                $chatId,
-                "To rate teas, link your account first:\n`/link your@email.com`"
-            );
-            $this->resetConversation($conversation);
             return;
         }
 
         $tea = $this->getLastRecommendedTea($conversation);
 
         if (!$tea) {
-            $this->sendMessage($chatId, "I don't have a tea to rate yet. Use /recommend first.");
+            $this->sendMessage(
+                $chatId,
+                "Hmm, I lost track of which tea to rate. Use /recommend to get a new suggestion!",
+                $this->buildKeyboard(['/recommend'])
+            );
             $this->resetConversation($conversation);
             return;
         }
 
-        $existing = Rating::where('user_id', $chat->user_id)
-            ->where('tea_id', $tea->id)
-            ->first();
+        // Only wrap the DB write + success message
+        try {
+            $existing = Rating::where('user_id', $chat->user_id)
+                ->where('tea_id', $tea->id)
+                ->first();
 
-        Rating::updateOrCreate(
-            ['user_id' => $chat->user_id, 'tea_id' => $tea->id],
-            ['rating' => $rating]
-        );
+            Rating::updateOrCreate(
+                ['user_id' => $chat->user_id, 'tea_id' => $tea->id],
+                ['rating' => $rating]
+            );
 
-        $verb = $existing ? 'updated' : 'submitted';
-        $stars = str_repeat('⭐', $rating);
+            $verb  = $existing ? 'updated to' : 'saved as';
+            $stars = str_repeat('⭐', $rating);
 
-        $conversation->update(['step' => self::STEP_POST_RECOMMENDATION]);
+            $conversation->update(['step' => self::STEP_POST_RECOMMENDATION]);
 
-        $this->sendMessage(
-            $chatId,
-            "Your rating for *{$tea->name}* was {$verb}: {$stars} ({$rating}/5).",
-            $this->buildKeyboard([self::ACTION_FAVOURITE, self::ACTION_NEW])
-        );
+            $this->sendMessage(
+                $chatId,
+                "🍵 Your rating for *{$tea->name}* was {$verb} {$stars} ({$rating}/5). Thank you!\nThis also updates your rating on the Teazy website.",
+                $this->buildKeyboard([self::ACTION_FAVOURITE, self::ACTION_NEW])
+            );
+        } catch (\Throwable $e) {
+            Log::error('Telegram processRating error', ['error' => $e->getMessage()]);
+            $this->sendMessage($chatId, "⭐ Couldn't save that rating right now. Please try again.", $this->buildKeyboard([self::ACTION_RATE, self::ACTION_NEW]));
+        }
     }
 
     private function buildRecommendationText(array $recommendation, TelegramConversation $conversation): string
     {
-        $tea = $recommendation['tea'];
-        $flavorLabel = $this->labelForValue($conversation->flavor, self::FLAVOR_OPTIONS);
+        $tea           = $recommendation['tea'];
+        $flavorLabel   = $this->labelForValue($conversation->flavor, self::FLAVOR_OPTIONS);
         $caffeineLabel = $this->labelForValue($conversation->caffeine, self::CAFFEINE_OPTIONS);
-        $healthLabel = $this->labelForValue($conversation->health_goal, self::HEALTH_OPTIONS);
+        $healthLabel   = $this->labelForValue($conversation->health_goal, self::HEALTH_OPTIONS);
+        $context       = $conversation->context ?? [];
 
-        $text = "Recommended Tea:\n*{$tea->name}*";
+        $text  = "🍵 *Your Tea Recommendation*";
+        $text .= "\n\n*{$tea->name}*";
+        $text .= "\nFlavor: {$tea->flavor} | Caffeine: {$tea->caffeine_level}";
 
         if ($tea->health_benefit) {
-            $text .= "\n\nHealth Benefits:\n{$tea->health_benefit}";
+            $text .= "\n\n💚 *Health Benefits*\n" . Str::limit($tea->health_benefit, 200);
         }
 
-        $text .= "\n\n📊 Match Score Breakdown:";
-        $text .= "\nFlavor: " . round($recommendation['flavor_score'] * 100) . "%";
-        $text .= "\nCaffeine: " . round($recommendation['caffeine_score'] * 100) . "%";
-        $text .= "\nHealth: " . round($recommendation['health_score'] * 100) . "%";
-        $text .= "\n\nOverall Match: " . round($recommendation['contextual_score'] ?? $recommendation['score']) . "/100";
+        $text .= "\n\n📊 *Match Score*: " . round($recommendation['contextual_score'] ?? $recommendation['score']) . "/100";
+        $text .= "\n• Flavor match: " . round($recommendation['flavor_score'] * 100) . "%";
+        $text .= "\n• Caffeine match: " . round($recommendation['caffeine_score'] * 100) . "%";
+        $text .= "\n• Health match: " . round($recommendation['health_score'] * 100) . "%";
 
-        $text .= "\n\nWhy Recommended:";
-        $text .= "\nMatches your {$flavorLabel} preference";
-        $text .= "\n{$caffeineLabel} caffeine level";
-        $text .= "\nSupports {$healthLabel}";
+        $text .= "\n\n✅ *Why this tea?*";
+        $text .= "\n• {$flavorLabel} flavor preference";
+        $text .= "\n• {$caffeineLabel} caffeine level";
+        $text .= "\n• Supports {$healthLabel}";
 
-        $context = $conversation->context ?? [];
         if (!empty($context['weather']) && !empty($context['city'])) {
-            $text .= "\nSuited to current weather in {$context['city']}";
+            $prefLabel = $this->labelForValue($context['weather_pref'] ?? 'auto', self::WEATHER_PREFS);
+            $text .= "\n• Weather-matched for {$context['city']} ({$prefLabel})";
         }
+
+        $text .= "\n\n🛒 *Shop this tea:*";
+        $text .= "\n[🟠 Buy on Shopee](" . $tea->shopeeShopUrl() . ")";
+        $text .= "  |  [🔵 Buy on Lazada](" . $tea->lazadaShopUrl() . ")";
 
         return $text;
     }
@@ -725,10 +948,15 @@ class TelegramBotService
 
     private function showFavorites(string $chatId, TelegramChat $chat): void
     {
+        try {
         if (!$chat->user_id) {
+            $conversation = $this->getConversation($chatId, null);
+            $conversation->update(['step' => self::STEP_AWAITING_EMAIL]);
             $this->sendMessage(
                 $chatId,
-                "Your Telegram account isn't linked to a website account. Use `/link your@email.com` to connect."
+                "❤️ To view your favourites, I need to link your Teazy account first."
+                . "\n\nPlease send me the *email address* you use on the Teazy website:"
+                . "\n_(Or tap /start to cancel)_"
             );
             return;
         }
@@ -738,25 +966,33 @@ class TelegramBotService
         if (!$user || $user->favourites->isEmpty()) {
             $this->sendMessage(
                 $chatId,
-                "You don't have any favourite teas saved yet. Find teas on the website and favourite them."
+                "🍵 You don't have any favourite teas saved yet."
+                . "\n\nUse /recommend to find teas, then tap \"" . self::ACTION_FAVOURITE . "\" to save them!",
+                $this->buildKeyboard(['/recommend', '/toptea'])
             );
             return;
         }
 
-        $text = "Your favourite teas:\n\n";
+        $count = $user->favourites->count();
+        $text  = "❤️ *Your Favourite Teas* ({$count})\n\n";
 
         foreach ($user->favourites as $index => $tea) {
             $text .= ($index + 1) . ". *{$tea->name}*\n";
             $text .= "   Flavor: {$tea->flavor} | Caffeine: {$tea->caffeine_level}\n";
 
             if ($tea->health_benefit) {
-                $text .= "   Benefits: " . Str::limit($tea->health_benefit, 80) . "\n";
+                $text .= "   " . Str::limit($tea->health_benefit, 60) . "\n";
             }
 
+            $text .= "   🛒 [Shopee](" . $tea->shopeeShopUrl() . ") | [Lazada](" . $tea->lazadaShopUrl() . ")\n";
             $text .= "\n";
         }
 
-        $this->sendMessage($chatId, $text);
+        $this->sendMessage($chatId, $text, $this->buildKeyboard(['/recommend', '/toptea']));
+        } catch (\Throwable $e) {
+            Log::error('Telegram showFavorites error', ['error' => $e->getMessage()]);
+            $this->sendMessage($chatId, "❤️ Couldn't load your favourites right now. Please try again in a moment.", $this->buildKeyboard(['/recommend']));
+        }
     }
 
     private function showTopTeas(string $chatId): void
@@ -806,7 +1042,10 @@ class TelegramBotService
     private function linkAccount(string $chatId, string $email, TelegramChat $chat): void
     {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $this->sendMessage($chatId, "That doesn't look like a valid email. Please try again.");
+            $this->sendMessage(
+                $chatId,
+                "❌ That doesn't look like a valid email address. Please try again, or tap /start to cancel."
+            );
             return;
         }
 
@@ -815,28 +1054,50 @@ class TelegramBotService
         if (!$user) {
             $this->sendMessage(
                 $chatId,
-                "I couldn't find an account with that email. Please check and try again."
+                "❌ I couldn't find a Teazy account with that email."
+                . "\n\nDouble-check the address and try again, or tap /start to cancel."
             );
             return;
         }
 
         $chat->update([
-            'user_id' => $user->id,
+            'user_id'   => $user->id,
             'linked_at' => now(),
         ]);
 
-        TelegramConversation::updateOrCreate(
+        // Preserve existing context (last_tea_id, pending_action) while updating user_id
+        $existing       = TelegramConversation::where('chat_id', $chatId)->first();
+        $existingContext = $existing ? ($existing->context ?? []) : [];
+        $pendingAction   = $existingContext['pending_action'] ?? null;
+        unset($existingContext['pending_action']);
+
+        $conversation = TelegramConversation::updateOrCreate(
             ['chat_id' => $chatId],
-            [
-                'user_id' => $user->id,
-                'step' => self::STEP_IDLE,
-            ]
+            ['user_id' => $user->id, 'step' => self::STEP_POST_RECOMMENDATION, 'context' => $existingContext]
         );
 
         $this->sendMessage(
             $chatId,
-            "Great! Your Telegram account is now linked to *{$user->email}*.\n\nYou can use /favorites to see your saved teas."
+            "✅ *Account linked!* Welcome, {$user->name}!"
+            . "\n\nYour Telegram is now connected to *{$user->email}*."
+            . "\nAll your favourites and ratings sync with the Teazy website."
         );
+
+        $chat->refresh();
+
+        // Resume whatever the user was trying to do before linking
+        if ($pendingAction === 'favourite') {
+            $this->addFavourite($chatId, $conversation->fresh(), $chat);
+        } elseif ($pendingAction === 'rate') {
+            $this->askForRating($chatId, $conversation->fresh(), $chat);
+        } else {
+            $conversation->update(['step' => self::STEP_IDLE]);
+            $this->sendMessage(
+                $chatId,
+                "What would you like to do?",
+                $this->buildKeyboard(['/recommend', '/favorites', '/toptea'])
+            );
+        }
     }
 
     private function sendMessage(string $chatId, string $text, ?array $keyboard = null): void
@@ -851,12 +1112,12 @@ class TelegramBotService
             $payload['reply_markup'] = json_encode($keyboard);
         }
 
-        $response = Http::post($this->baseUrl() . '/sendMessage', $payload);
+        $response = $this->telegramPost('/sendMessage', $payload);
 
-        if (!$response->successful()) {
+        if (!$response || !$response->successful()) {
             Log::warning('Telegram sendMessage failed', [
-                'chat_id' => $chatId,
-                'response' => $response->body(),
+                'chat_id'  => $chatId,
+                'response' => $response ? $response->body() : 'no response (network error)',
             ]);
         }
     }
@@ -874,12 +1135,12 @@ class TelegramBotService
             $payload['reply_markup'] = json_encode($keyboard);
         }
 
-        $response = Http::post($this->baseUrl() . '/sendPhoto', $payload);
+        $response = $this->telegramPost('/sendPhoto', $payload);
 
-        if (!$response->successful()) {
+        if (!$response || !$response->successful()) {
             Log::warning('Telegram sendPhoto failed, falling back to text', [
-                'chat_id' => $chatId,
-                'response' => $response->body(),
+                'chat_id'  => $chatId,
+                'response' => $response ? $response->body() : 'no response (network error)',
             ]);
 
             $text = $caption . "\n\n[Tea image]({$photoUrl})";
@@ -887,17 +1148,49 @@ class TelegramBotService
         }
     }
 
-    private function buildKeyboard(array $options): array
+    /**
+     * Resilient POST to the Telegram API.
+     * Handles transient network failures common on local/Windows setups
+     * (e.g. cURL error 56 "connection reset") by forcing IPv4, setting
+     * sane timeouts, and retrying a few times before giving up.
+     */
+    private function telegramPost(string $endpoint, array $payload): ?\Illuminate\Http\Client\Response
     {
-        $rows = [];
+        try {
+            return Http::asForm()
+                ->connectTimeout(10)
+                ->timeout(20)
+                ->retry(3, 800, function ($exception) {
+                    // Retry only on connection-level errors, not HTTP 4xx/5xx
+                    return $exception instanceof \Illuminate\Http\Client\ConnectionException;
+                }, throw: false)
+                ->withOptions([
+                    'curl' => [
+                        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+                    ],
+                ])
+                ->post($this->baseUrl() . $endpoint, $payload);
+        } catch (\Throwable $e) {
+            Log::warning('Telegram API request failed after retries', [
+                'endpoint' => $endpoint,
+                'error'    => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
 
-        foreach ($options as $option) {
-            $rows[] = [['text' => $option]];
+    private function buildKeyboard(array $options, int $perRow = 1): array
+    {
+        $rows   = [];
+        $chunks = array_chunk(array_values($options), $perRow);
+
+        foreach ($chunks as $chunk) {
+            $rows[] = array_map(fn($o) => ['text' => $o], $chunk);
         }
 
         return [
-            'keyboard' => $rows,
-            'resize_keyboard' => true,
+            'keyboard'          => $rows,
+            'resize_keyboard'   => true,
             'one_time_keyboard' => true,
         ];
     }

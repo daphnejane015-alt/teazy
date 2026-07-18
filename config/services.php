@@ -36,6 +36,12 @@ return [
         'base_url' => 'https://api.openweathermap.org/data/2.5',
     ],
 
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-flash-latest'),
+        'base_url' => 'https://generativelanguage.googleapis.com/v1beta',
+    ],
+
     'telegram' => [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'bot_username' => env('TELEGRAM_BOT_USERNAME'),
