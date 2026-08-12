@@ -4,8 +4,11 @@
 <div class="space-y-6">
     <!-- Welcome Card -->
     <div class="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-8 text-white">
-        <h2 class="text-3xl font-bold mb-4">Welcome to Teazy! 🍵</h2>
-        <p class="text-lg mb-6">Discover your perfect tea match based on weather, preferences, and mood.</p>
+        <div class="flex flex-col items-center mb-6">
+            <img src="{{ asset('images/logo.jpg') }}" alt="Teazy Logo" class="h-16 w-16 rounded-full object-cover border-4 border-white shadow-lg mb-4">
+            <h2 class="text-3xl font-bold text-center">Welcome to Teazy! 🍵</h2>
+        </div>
+        <p class="text-lg mb-6 text-center">Discover your perfect tea match based on weather, preferences, and mood.</p>
         
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="bg-white/20 backdrop-blur-sm rounded-lg p-4">

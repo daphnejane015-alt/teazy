@@ -5,6 +5,7 @@
 <!-- Welcome Section -->
 <div class="mb-8">
     <div class="text-center mb-8">
+        <img src="{{ asset('images/logo.jpg') }}" alt="Teazy Logo" class="h-20 w-20 mx-auto rounded-full object-cover border-4 border-white shadow-lg mb-6">
         <h1 class="text-5xl font-bold mb-4" style="color: var(--primary-green);">
             Welcome to Teazy
         </h1>

@@ -324,7 +324,7 @@
         <h1>About <span>Teazy</span></h1>
         <p>
             We believe finding the right tea should be effortless, personal, and delightful.
-            Teazy was built to help everyone discover teas that match their taste, mood, and wellness goals.
+            Teazy was built to help everyone discover teas that match their taste and wellness goals.
         </p>
     </section>
 
@@ -332,7 +332,7 @@
     <section class="section">
         <h2 class="section-title">Who We Are</h2>
         <p class="section-subtitle">
-            Teazy is a smart tea recommendation platform that blends data-driven insights with a love for tea.
+            Teazy is a smart tea recommendation platform that blends data driven insights with a love for tea.
         </p>
         <div class="about-grid">
             <div class="about-card">

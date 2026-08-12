@@ -291,7 +291,7 @@
     <nav class="navbar">
         <div class="navbar-content">
             <a href="{{ url('/') }}" class="logo">
-                <span>🍃</span>
+                <img src="{{ asset('images/logo.jpg') }}" alt="Teazy Logo" class="h-10 w-10 rounded-full object-cover border-2 border-white shadow-sm">
                 <span>Teazy</span>
             </a>
             
@@ -304,7 +304,7 @@
 
     <!-- Hero Section -->
     <section class="hero">
-        <div class="hero-icon">🍵</div>
+        <img src="{{ asset('images/logo.jpg') }}" alt="Teazy Logo" class="w-20 h-20 mx-auto rounded-full object-cover border-4 border-white shadow-lg mb-6">
         <h1 class="hero-title">
             Discover Your <span>Perfect Tea</span>
         </h1>

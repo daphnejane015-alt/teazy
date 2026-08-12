@@ -1,0 +1,196 @@
+@startuml Teazy_ERD
+' Teazy - Entity Relationship Diagram (PlantUML)
+' Render at https://www.plantuml.com/plantuml or with the PlantUML CLI/extension.
+' Reflects current migrations through 2026_07_18.
+
+hide circle
+skinparam linetype ortho
+skinparam roundcorner 8
+skinparam shadowing false
+
+entity "users" as users {
+  * id : int <<PK>>
+  --
+  name : varchar
+  username : varchar <<UK, nullable>>
+  email : varchar <<UK>>
+  email_verified_at : timestamp
+  phone : varchar
+  phone_number : varchar
+  bio : text
+  favorite_tea_type : varchar
+  caffeine_preference : varchar
+  role : enum(admin|user)
+  password : varchar
+  remember_token : varchar
+  created_at / updated_at : timestamp
+}
+
+entity "teas" as teas {
+  * id : bigint <<PK>>
+  --
+  name : varchar
+  flavor : varchar
+  caffeine_level : varchar
+  health_benefit : text
+  ai_description : text
+  ai_description_generated_at : timestamp
+  image : varchar
+  source : enum(scraped|manual)
+  source_url : varchar
+  shop_link : varchar
+  shopee_link : varchar
+  lazada_link : varchar
+  created_at / updated_at : timestamp
+}
+
+entity "ratings" as ratings {
+  * id : bigint <<PK>>
+  --
+  user_id : int <<FK>>
+  tea_id : bigint <<FK>>
+  rating : int (1-5)
+  description : text
+  comment : text
+  created_at / updated_at : timestamp
+  --
+  unique(user_id, tea_id)
+}
+
+entity "preferences" as preferences {
+  * id : int <<PK>>
+  --
+  user_id : int <<FK>>
+  preferred_flavor : varchar
+  preferred_caffeine : varchar
+  health_goal : varchar
+  city : varchar
+  state : varchar
+  country : varchar
+  latitude : decimal
+  longitude : decimal
+  weather_based_recommendations : boolean
+  weather_preference : varchar
+  created_at / updated_at : timestamp
+}
+
+entity "favourites" as favourites {
+  * id : bigint <<PK>>
+  --
+  user_id : int <<FK>>
+  tea_id : bigint <<FK>>
+  created_at / updated_at : timestamp
+  --
+  unique(user_id, tea_id)
+}
+
+entity "tea_ai_descriptions" as tea_ai {
+  * id : bigint <<PK>>
+  --
+  tea_id : bigint <<FK>>
+  user_id : int <<FK>>
+  description : text
+  sources : json
+  preference_signature : varchar(64)
+  generated_at : timestamp
+  created_at / updated_at : timestamp
+  --
+  unique(tea_id, user_id)
+}
+
+entity "weather" as weather {
+  * id : bigint <<PK>>
+  --
+  city : varchar
+  country : varchar
+  latitude : decimal
+  longitude : decimal
+  date : date
+  temperature : decimal
+  feels_like : decimal
+  humidity : int
+  wind_speed : decimal
+  pressure : int
+  main_condition : varchar
+  description : varchar
+  icon_code : varchar
+  forecast_data : json
+  created_at / updated_at : timestamp
+}
+
+entity "recommendation_interactions" as reco {
+  * id : bigint <<PK>>
+  --
+  user_id : int <<FK>>
+  tea_id : bigint <<FK>>
+  weather_category : varchar
+  temperature : decimal
+  humidity : decimal
+  day_of_week : varchar
+  time_of_day : varchar
+  season : varchar
+  user_flavor_preference : varchar
+  user_caffeine_preference : varchar
+  user_health_goal : varchar
+  user_weather_preference : varchar
+  action : varchar
+  rating : tinyint
+  algorithm_used : varchar
+  confidence_score : decimal
+  prediction_score : decimal
+  features : json
+  feature_importance : json
+  model_version : varchar
+  created_at / updated_at : timestamp
+}
+
+entity "deleted_teas" as deleted_teas {
+  * id : bigint <<PK>>
+  --
+  name : varchar
+  normalized_name : varchar
+  source : varchar
+  deleted_by : bigint (user id, no FK)
+  original_data : json
+  created_at / updated_at : timestamp
+}
+
+entity "telegram_chats" as tg_chats {
+  * id : bigint <<PK>>
+  --
+  chat_id : varchar <<UK>>
+  user_id : int <<FK, nullable>>
+  username : varchar
+  first_name : varchar
+  last_name : varchar
+  linked_at : timestamp
+  created_at / updated_at : timestamp
+}
+
+entity "telegram_conversations" as tg_conv {
+  * id : bigint <<PK>>
+  --
+  chat_id : varchar <<UK>>
+  user_id : int <<FK, nullable>>
+  step : varchar
+  flavor : varchar
+  caffeine : varchar
+  health_goal : varchar
+  context : json
+  created_at / updated_at : timestamp
+}
+
+users ||--o{ ratings
+users ||--o{ preferences
+users ||--o{ favourites
+users ||--o{ tea_ai
+users ||--o{ reco
+users ||--o{ tg_chats
+users ||--o{ tg_conv
+
+teas ||--o{ ratings
+teas ||--o{ favourites
+teas ||--o{ tea_ai
+teas ||--o{ reco
+
+@enduml

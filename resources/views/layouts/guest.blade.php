@@ -129,9 +129,7 @@
         <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 px-4">
             <!-- Logo Section -->
             <div class="text-center mb-8">
-                <div class="tea-logo mx-auto mb-4">
-                    🍵
-                </div>
+                <img src="{{ asset('images/logo.jpg') }}" alt="Teazy Logo" class="w-20 h-20 mx-auto rounded-full object-cover border-4 border-white shadow-lg mb-4">
                 <h1 class="text-3xl font-bold text-green-800 mb-2">Teazy</h1>
                 <p class="text-green-700">Discover your perfect tea match</p>
             </div>

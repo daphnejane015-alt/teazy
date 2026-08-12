@@ -1,0 +1,168 @@
+erDiagram
+    USERS ||--o{ RATINGS : "gives"
+    USERS ||--o{ PREFERENCES : "sets"
+    USERS ||--o{ FAVOURITES : "saves"
+    USERS ||--o{ RECOMMENDATION_INTERACTIONS : "generates"
+    USERS ||--o{ TEA_AI_DESCRIPTIONS : "requests"
+    USERS ||--o{ TELEGRAM_CHATS : "links"
+    USERS ||--o{ TELEGRAM_CONVERSATIONS : "has"
+
+    TEAS ||--o{ RATINGS : "receives"
+    TEAS ||--o{ FAVOURITES : "is favourited in"
+    TEAS ||--o{ RECOMMENDATION_INTERACTIONS : "featured in"
+    TEAS ||--o{ TEA_AI_DESCRIPTIONS : "described by"
+
+    USERS {
+        int id PK
+        string name
+        string username UK
+        string email UK
+        timestamp email_verified_at
+        string phone
+        string phone_number
+        text bio
+        string favorite_tea_type
+        string caffeine_preference
+        enum role
+        string password
+        string remember_token
+        timestamps created_at_updated_at
+    }
+
+    TEAS {
+        bigint id PK
+        string name
+        string flavor
+        string caffeine_level
+        text health_benefit
+        text ai_description
+        timestamp ai_description_generated_at
+        string image
+        enum source
+        string source_url
+        string shop_link
+        string shopee_link
+        string lazada_link
+        timestamps created_at_updated_at
+    }
+
+    RATINGS {
+        bigint id PK
+        int user_id FK
+        bigint tea_id FK
+        int rating
+        text description
+        text comment
+        timestamps created_at_updated_at
+    }
+
+    PREFERENCES {
+        int id PK
+        int user_id FK
+        string preferred_flavor
+        string preferred_caffeine
+        string health_goal
+        string city
+        string state
+        string country
+        decimal latitude
+        decimal longitude
+        boolean weather_based_recommendations
+        string weather_preference
+        timestamps created_at_updated_at
+    }
+
+    FAVOURITES {
+        bigint id PK
+        int user_id FK
+        bigint tea_id FK
+        timestamps created_at_updated_at
+    }
+
+    TEA_AI_DESCRIPTIONS {
+        bigint id PK
+        bigint tea_id FK
+        int user_id FK
+        text description
+        json sources
+        string preference_signature
+        timestamp generated_at
+        timestamps created_at_updated_at
+    }
+
+    WEATHER {
+        bigint id PK
+        string city
+        string country
+        decimal latitude
+        decimal longitude
+        date date
+        decimal temperature
+        decimal feels_like
+        int humidity
+        decimal wind_speed
+        int pressure
+        string main_condition
+        string description
+        string icon_code
+        json forecast_data
+        timestamps created_at_updated_at
+    }
+
+    RECOMMENDATION_INTERACTIONS {
+        bigint id PK
+        int user_id FK
+        bigint tea_id FK
+        string weather_category
+        decimal temperature
+        decimal humidity
+        string day_of_week
+        string time_of_day
+        string season
+        string user_flavor_preference
+        string user_caffeine_preference
+        string user_health_goal
+        string user_weather_preference
+        string action
+        tinyint rating
+        string algorithm_used
+        decimal confidence_score
+        decimal prediction_score
+        json features
+        json feature_importance
+        string model_version
+        timestamps created_at_updated_at
+    }
+
+    DELETED_TEAS {
+        bigint id PK
+        string name
+        string normalized_name
+        string source
+        bigint deleted_by
+        json original_data
+        timestamps created_at_updated_at
+    }
+
+    TELEGRAM_CHATS {
+        bigint id PK
+        string chat_id UK
+        int user_id FK
+        string username
+        string first_name
+        string last_name
+        timestamp linked_at
+        timestamps created_at_updated_at
+    }
+
+    TELEGRAM_CONVERSATIONS {
+        bigint id PK
+        string chat_id UK
+        int user_id FK
+        string step
+        string flavor
+        string caffeine
+        string health_goal
+        json context
+        timestamps created_at_updated_at
+    }

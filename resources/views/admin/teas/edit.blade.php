@@ -97,7 +97,16 @@
         <div>
             <label class="block text-sm font-medium text-gray-700">Current Image</label>
             <div class="mt-2">
-                <img src="{{ ($tea->image && str_starts_with($tea->image, 'http')) ? $tea->image : (($tea->image && str_starts_with($tea->image, '//')) ? ('https:'.$tea->image) : (($tea->image && str_starts_with($tea->image, '/storage/')) ? $tea->image : ($tea->image ? ('/storage/'.$tea->image) : ''))) }}" alt="{{ $tea->name }}" class="w-48 h-32 object-cover rounded">
+                @php
+                    $fallbackImage = 'https://images.unsplash.com/photo-1564890369478-c89ca6d9cde9?w=600&h=400&fit=crop';
+                    $imgSrc = $tea->image
+                        ? (str_starts_with($tea->image, 'http') ? $tea->image
+                            : (str_starts_with($tea->image, '//') ? 'https:'.$tea->image
+                            : (str_starts_with($tea->image, '/storage/') ? $tea->image : '/storage/'.$tea->image)))
+                        : $fallbackImage;
+                @endphp
+                <img src="{{ $imgSrc }}" alt="{{ $tea->name }}" class="w-48 h-32 object-cover rounded"
+                     onerror="this.onerror=null;this.src='{{ $fallbackImage }}';">
             </div>
         </div>
 

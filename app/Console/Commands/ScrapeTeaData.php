@@ -120,7 +120,7 @@ class ScrapeTeaData extends Command
             $this->line("Deleted {$deleted} existing scraped teas");
             $this->newLine();
         }
-
+        // Source websites configuration
         $sources = [
             'nutrition' => [
                 'url' => 'https://www.nutritionadvance.com/healthy-foods/types-of-tea/',
@@ -319,9 +319,10 @@ class ScrapeTeaData extends Command
             $paragraphs = [];
             $guideLink = null;
             $stopped = false;
+            $imageUrl = null;
 
             try {
-                $node->nextAll()->each(function ($sib) use (&$paragraphs, &$guideLink, &$stopped, $name) {
+                $node->nextAll()->each(function ($sib) use (&$paragraphs, &$guideLink, &$stopped, &$imageUrl, $name, $sourceUrl) {
                     if ($stopped) {
                         return;
                     }
@@ -331,6 +332,11 @@ class ScrapeTeaData extends Command
                     if ($tag === 'h2') {
                         $stopped = true;
                         return;
+                    }
+
+                    // Try to grab a real content image for this tea before moving on
+                    if ($imageUrl === null) {
+                        $imageUrl = $this->extractContentImage($sib, $sourceUrl);
                     }
 
                     if ($tag === 'p') {
@@ -383,7 +389,7 @@ class ScrapeTeaData extends Command
 
             // Try to find a specific shop link for this tea, otherwise use generic
             $shopLink = $shopLinks[$name] ?? $this->findShopLinkForTea($name) ?? null;
-            $this->saveTea($name, $flavor, $caffeine, $benefit, $sourceUrl, $shopLink);
+            $this->saveTea($name, $flavor, $caffeine, $benefit, $sourceUrl, $shopLink, $imageUrl);
 
             // Queue the guide link so we can enrich the benefit afterwards
             if ($guideLink !== null) {
@@ -516,7 +522,9 @@ class ScrapeTeaData extends Command
         // sentence-paragraph (which contains the health-benefit description);
         // product-card captions that sometimes follow have no period and are
         // skipped so the stored description stays valid.
-        $entries = $this->collectSimpleLeafEntries($container);
+        $collected = $this->collectSimpleLeafEntries($container, $url);
+        $entries = $collected['entries'];
+        $images = $collected['images'];
         $this->line('  Found ' . count($entries) . ' tea descriptions');
 
         foreach ($entries as $name => $benefit) {
@@ -526,7 +534,8 @@ class ScrapeTeaData extends Command
                 ?? null;
 
             $flavor = $this->detectFlavor($name . ' ' . $benefit);
-            $this->saveTea($name, $flavor, 'Caffeine-free', $benefit, $sourceUrl, $shopLink);
+            $imageUrl = $images[$name] ?? null;
+            $this->saveTea($name, $flavor, 'Caffeine-free', $benefit, $sourceUrl, $shopLink, $imageUrl);
         }
     }
 
@@ -537,16 +546,17 @@ class ScrapeTeaData extends Command
      * the .rte container (NOT inside <p> tags). We therefore walk ALL child
      * nodes of the container in document order instead of using CSS selectors.
      *
-     * Returns: [ displayName => benefitText ]
+     * Returns: ['entries' => [ displayName => benefitText ], 'images' => [ displayName => imageUrl ]]
      */
-    protected function collectSimpleLeafEntries($container): array
+    protected function collectSimpleLeafEntries($container, string $baseUrl = ''): array
     {
         $entries = [];
+        $images = [];
 
         try {
             $dom = $container->getNode(0);
             if (!$dom) {
-                return $entries;
+                return ['entries' => $entries, 'images' => $images];
             }
 
             $currentName = null;
@@ -611,6 +621,15 @@ class ScrapeTeaData extends Command
                 // ------ Skip product caption <p> tags (image alt text etc.) ------
                 if ($type === 1 && $name === 'p') {
                     $pText = trim($child->textContent);
+
+                    // Product caption/card paragraphs often wrap the tea's photo
+                    if ($currentName !== null && !isset($images[$currentName])) {
+                        $found = $this->extractImageFromDomElement($child, $baseUrl);
+                        if ($found !== null) {
+                            $images[$currentName] = $found;
+                        }
+                    }
+
                     // Product captions have no period and are short
                     if (strpos($pText, '.') === false || strlen($pText) < 30) {
                         continue;
@@ -618,6 +637,28 @@ class ScrapeTeaData extends Command
                     // Otherwise treat as description text
                     if ($currentName !== null && ($entries[$currentName] ?? null) === null) {
                         $descParts[] = $pText;
+                    }
+                    continue;
+                }
+
+                // ------ Standalone <img> elements (product photos) ------
+                if ($type === 1 && $name === 'img') {
+                    if ($currentName !== null && !isset($images[$currentName])) {
+                        $found = $this->extractImageFromDomElement($child, $baseUrl);
+                        if ($found !== null) {
+                            $images[$currentName] = $found;
+                        }
+                    }
+                    continue;
+                }
+
+                // ------ Wrapper elements that may contain a product image ------
+                if ($type === 1 && in_array($name, ['div', 'figure', 'picture'], true)) {
+                    if ($currentName !== null && !isset($images[$currentName])) {
+                        $found = $this->extractImageFromDomElement($child, $baseUrl);
+                        if ($found !== null) {
+                            $images[$currentName] = $found;
+                        }
                     }
                     continue;
                 }
@@ -659,7 +700,7 @@ class ScrapeTeaData extends Command
             }
         }
 
-        return $entries;
+        return ['entries' => $entries, 'images' => $images];
     }
 
     /**
@@ -1005,6 +1046,7 @@ class ScrapeTeaData extends Command
         foreach ($entries as $entry) {
             $benefit = $entry['benefit'];
             $localAnchors = $entry['anchors'] ?? [];
+            $imageUrl = $entry['image'] ?? null;
 
             foreach ($entry['teas'] as $rawTeaName) {
                 $name = $this->cleanTeaHouseName($rawTeaName);
@@ -1032,7 +1074,7 @@ class ScrapeTeaData extends Command
                     ?? $this->findShopLinkForTea($name)
                     ?? null;
 
-                $this->saveTea($name, $flavor, $caffeine, $benefit, $sourceUrl, $shopLink);
+                $this->saveTea($name, $flavor, $caffeine, $benefit, $sourceUrl, $shopLink, $imageUrl);
             }
         }
     }
@@ -1075,10 +1117,14 @@ class ScrapeTeaData extends Command
                     $anchors[$anchorText] = $this->makeAbsoluteUrl($href, $baseUrl);
                 });
 
+                // Try to pick up a real tea photo attached to this list item
+                $image = $this->extractContentImage($li, $baseUrl);
+
                 $entries[] = [
                     'benefit' => $split['benefit'],
                     'teas' => $split['teas'],
                     'anchors' => $anchors,
+                    'image' => $image,
                 ];
             });
         } catch (\Throwable $e) {
@@ -1495,8 +1541,8 @@ class ScrapeTeaData extends Command
 
     /**
      * Save or update a tea in the database - with intelligent data merging
-     */
-    protected function saveTea(string $name, string $flavor, string $caffeine, string $benefit, string $sourceUrl = '', ?string $shopLink = null): void
+     */ // Saving scraped tea with deduplication logic
+    protected function saveTea(string $name, string $flavor, string $caffeine, string $benefit, string $sourceUrl = '', ?string $shopLink = null, ?string $scrapedImage = null): void
     {
         $placeholderImage = $this->teaPlaceholders[$this->placeholderIndex % count($this->teaPlaceholders)];
         $this->placeholderIndex++;
@@ -1508,7 +1554,7 @@ class ScrapeTeaData extends Command
         if (\App\Models\DeletedTea::wasDeleted($normalizedName)) {
             $this->skipped++;
             if ($this->verbose) {
-                $this->line("  ⚠️  Skipping '{$normalizedName}' - was deleted by admin");
+                $this->line("    Skipping '{$normalizedName}' - was deleted by admin");
             }
             return;
         }
@@ -1568,12 +1614,15 @@ class ScrapeTeaData extends Command
             $tea->health_benefit = $this->getDefaultBenefitForTea($normalizedName);
         }
         
-        // Only set placeholder image for new teas or if current image is already a placeholder URL
-        // Never overwrite admin-uploaded images (stored as local paths like "teas/xxx.jpg")
+        // Only set the image for new teas or if the current image is already a
+        // placeholder/scraped URL. Never overwrite admin-uploaded images
+        // (stored as local paths like "teas/xxx.jpg").
         $currentImage = $tea->image ?? '';
         $isLocalUpload = !empty($currentImage) && !str_starts_with($currentImage, 'http') && !str_starts_with($currentImage, '//');
         if (!$isLocalUpload) {
-            $tea->image = $placeholderImage;
+            // Prefer a real image scraped from the source website; fall back to
+            // an Unsplash placeholder if none was found or it failed to scrape.
+            $tea->image = $scrapedImage ?: $placeholderImage;
         }
 
         // Save source URL
@@ -1747,6 +1796,106 @@ class ScrapeTeaData extends Command
         
         $basePath = dirname($parsedBase['path'] ?? '/');
         return $scheme . '://' . $host . $basePath . '/' . $url;
+    }
+
+    /**
+     * Try to extract a real content image (e.g. a photo of the tea) from a
+     * Crawler node - checking the node itself and its descendants. Lazy-loaded
+     * images (data-src/data-original) are supported. Returns null when no
+     * suitable image is found, so the caller can fall back to an Unsplash
+     * placeholder instead.
+     */
+    private function extractContentImage($crawlerNode, string $baseUrl): ?string
+    {
+        try {
+            $candidates = [];
+
+            if (strtolower($crawlerNode->nodeName()) === 'img') {
+                $candidates[] = $crawlerNode;
+            }
+
+            $crawlerNode->filter('img')->each(function ($img) use (&$candidates) {
+                $candidates[] = $img;
+            });
+
+            foreach ($candidates as $img) {
+                $src = $img->attr('data-src') ?: $img->attr('data-original') ?: $img->attr('src');
+                if (empty($src) || str_starts_with($src, 'data:')) {
+                    continue; // no source or inline base64 placeholder
+                }
+
+                $absolute = $this->makeAbsoluteUrl($src, $baseUrl);
+                $alt = $img->attr('alt') ?? '';
+
+                if ($this->isLikelyContentImage($absolute, $alt)) {
+                    return $absolute;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Ignore and let the caller fall back to a placeholder image
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract a real content image URL from a raw DOMElement (used when
+     * walking a Crawler's underlying DOM directly, e.g. in
+     * collectSimpleLeafEntries()). Mirrors extractContentImage() but works
+     * on \DOMElement instead of a Symfony Crawler node.
+     */
+    private function extractImageFromDomElement(\DOMElement $element, string $baseUrl): ?string
+    {
+        $imgs = [];
+        if (strtolower($element->nodeName) === 'img') {
+            $imgs[] = $element;
+        }
+        foreach ($element->getElementsByTagName('img') as $img) {
+            $imgs[] = $img;
+        }
+
+        foreach ($imgs as $img) {
+            $src = $img->getAttribute('data-src') ?: ($img->getAttribute('data-original') ?: $img->getAttribute('src'));
+            if (empty($src) || str_starts_with($src, 'data:')) {
+                continue;
+            }
+
+            $absolute = $this->makeAbsoluteUrl($src, $baseUrl);
+            $alt = $img->getAttribute('alt') ?? '';
+
+            if ($this->isLikelyContentImage($absolute, $alt)) {
+                return $absolute;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Heuristic filter that skips logos, icons, avatars, badges, and other
+     * non-content images so we don't accidentally store site branding as a
+     * tea photo.
+     */
+    private function isLikelyContentImage(string $src, string $alt = ''): bool
+    {
+        $lower = strtolower($src . ' ' . $alt);
+
+        $skipPatterns = [
+            'logo', 'icon', 'avatar', 'sprite', 'placeholder', 'spacer',
+            'badge', 'button', 'social', 'favicon', 'blank.gif', '1x1',
+        ];
+        foreach ($skipPatterns as $pattern) {
+            if (strpos($lower, $pattern) !== false) {
+                return false;
+            }
+        }
+
+        // SVGs are almost always icons/logos on these sites, not tea photos
+        if (preg_match('/\.svg(\?.*)?$/i', $src)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

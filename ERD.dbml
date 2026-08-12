@@ -1,0 +1,199 @@
+// Teazy - Database schema (DBML)
+// Paste into https://dbdiagram.io to render a visual ERD.
+// Reflects current migrations through 2026_07_18.
+
+Table users {
+  id int [pk, increment]
+  name varchar
+  username varchar [unique, note: 'nullable']
+  email varchar [unique]
+  email_verified_at timestamp [null]
+  phone varchar [null]
+  phone_number varchar [null]
+  bio text [null]
+  favorite_tea_type varchar [null]
+  caffeine_preference varchar [null]
+  role varchar [note: 'admin|user, default user']
+  password varchar
+  remember_token varchar [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table teas {
+  id bigint [pk, increment]
+  name varchar
+  flavor varchar
+  caffeine_level varchar
+  health_benefit text
+  ai_description text [null]
+  ai_description_generated_at timestamp [null]
+  image varchar
+  source varchar [note: 'scraped|manual, default manual']
+  source_url varchar [null]
+  shop_link varchar [null]
+  shopee_link varchar [null]
+  lazada_link varchar [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table ratings {
+  id bigint [pk, increment]
+  user_id int [ref: > users.id, note: 'cascade']
+  tea_id bigint [ref: > teas.id, note: 'cascade']
+  rating int [note: '1-5']
+  description text [null]
+  comment text [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (user_id, tea_id) [unique]
+  }
+}
+
+Table preferences {
+  id int [pk, increment]
+  user_id int [ref: > users.id, note: 'cascade']
+  preferred_flavor varchar
+  preferred_caffeine varchar
+  health_goal varchar
+  city varchar [null]
+  state varchar [null]
+  country varchar [null]
+  latitude decimal [null]
+  longitude decimal [null]
+  weather_based_recommendations boolean [default: false]
+  weather_preference varchar [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table favourites {
+  id bigint [pk, increment]
+  user_id int [ref: > users.id, note: 'cascade']
+  tea_id bigint [ref: > teas.id, note: 'cascade']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (user_id, tea_id) [unique]
+  }
+}
+
+Table tea_ai_descriptions {
+  id bigint [pk, increment]
+  tea_id bigint [ref: > teas.id, note: 'cascade']
+  user_id int [ref: > users.id, note: 'cascade']
+  description text
+  sources json [null]
+  preference_signature varchar [note: 'len 64']
+  generated_at timestamp
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (tea_id, user_id) [unique]
+  }
+}
+
+Table weather {
+  id bigint [pk, increment]
+  city varchar
+  country varchar
+  latitude decimal
+  longitude decimal
+  date date
+  temperature decimal
+  feels_like decimal
+  humidity int
+  wind_speed decimal
+  pressure int
+  main_condition varchar
+  description varchar
+  icon_code varchar
+  forecast_data json
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (city, date)
+    date
+  }
+}
+
+Table recommendation_interactions {
+  id bigint [pk, increment]
+  user_id int [ref: > users.id, note: 'cascade']
+  tea_id bigint [ref: > teas.id, note: 'cascade']
+  weather_category varchar [null]
+  temperature decimal [null]
+  humidity decimal [null]
+  day_of_week varchar [null]
+  time_of_day varchar [null]
+  season varchar [null]
+  user_flavor_preference varchar [null]
+  user_caffeine_preference varchar [null]
+  user_health_goal varchar [null]
+  user_weather_preference varchar [null]
+  action varchar [note: 'viewed|rated|liked|disliked|ignored|recommended']
+  rating tinyint [null]
+  algorithm_used varchar [null]
+  confidence_score decimal [null]
+  prediction_score decimal [null]
+  features json [null]
+  feature_importance json [null]
+  model_version varchar [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (user_id, created_at)
+    (tea_id, action)
+    (weather_category, action)
+    (algorithm_used, created_at)
+    created_at
+  }
+}
+
+Table deleted_teas {
+  id bigint [pk, increment]
+  name varchar
+  normalized_name varchar
+  source varchar [default: 'scraped']
+  deleted_by bigint [null, note: 'user id, no FK']
+  original_data json [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    normalized_name
+    (normalized_name, source)
+  }
+}
+
+Table telegram_chats {
+  id bigint [pk, increment]
+  chat_id varchar [unique]
+  user_id int [ref: > users.id, null, note: 'set null on delete']
+  username varchar [null]
+  first_name varchar [null]
+  last_name varchar [null]
+  linked_at timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table telegram_conversations {
+  id bigint [pk, increment]
+  chat_id varchar [unique]
+  user_id int [ref: > users.id, null, note: 'set null on delete']
+  step varchar [default: 'idle']
+  flavor varchar [null]
+  caffeine varchar [null]
+  health_goal varchar [null]
+  context json [null]
+  created_at timestamp
+  updated_at timestamp
+}
